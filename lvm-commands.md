@@ -36,3 +36,16 @@ sudo lvcreate --size 1G --snapshot --name datas-snap /dev/lvm-vg/datas
 sudo lvremove /dev/lvm-vg/datas
 ```
 
+## Restore or merge a snapshot
+
+If the origin volume can be un-mounted
+
+```
+sudo umount /mnt/datas
+```
+
+Or reboot after the merge if the volume is the root partition that cannot be un-mounted
+
+```
+sudo lvconvert --merge /dev/lvm-vg/datas-snap
+```
