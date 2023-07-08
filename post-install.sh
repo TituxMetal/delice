@@ -1,6 +1,6 @@
 #!/bin/bash
 
-sudo apt install -y vim htop git \
+sudo apt install -y vim htop git bash-completion rsync curl wget \
   build-essential libpam0g-dev libxcb-xkb-dev \
   netselect-apt lynis duf systemd-zram-generator
 
