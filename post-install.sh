@@ -2,11 +2,11 @@
 
 
 apt install -y vim htop git bash-completion rsync curl wget \
-  chrony modemmanager systemd-resolved ufw iwd dnsutils libnss-mdns avahi-daemon \
+  chrony modemmanager ufw iwd dnsutils libnss-mdns avahi-daemon \
   build-essential libpam0g-dev libxcb-xkb-dev \
   netselect-apt lynis duf systemd-zram-generator
 
-systemctl enable chrony ssh avahi-daemon fstrim.timer ufw iwd ModemManager systemd-resolved
+systemctl enable chrony ssh avahi-daemon fstrim.timer ufw iwd ModemManager
 
 # Setup time
 timedatectl set-timezone Europe/Paris --adjust-system-clock
