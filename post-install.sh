@@ -2,7 +2,7 @@
 
 
 apt install -y vim htop git bash-completion rsync curl wget \
-  chrony modemmanager ufw iwd dnsutils libnss-mdns avahi-daemon \
+  chrony modemmanager systemd-resolved ufw iwd dnsutils libnss-mdns avahi-daemon \
   build-essential libpam0g-dev libxcb-xkb-dev \
   netselect-apt lynis duf systemd-zram-generator
 
