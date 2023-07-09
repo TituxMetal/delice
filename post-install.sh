@@ -6,7 +6,7 @@ apt install -y vim htop git bash-completion rsync curl wget \
   build-essential libpam0g-dev libxcb-xkb-dev \
   netselect-apt lynis duf systemd-zram-generator
 
-systemctl enable chrony sshd avahi-daemon fstrim.timer ufw iwd ModemManager systemd-resolved ntpd
+systemctl enable chrony sshd avahi-daemon fstrim.timer ufw iwd ModemManager systemd-resolved
 
 # Setup time
 timedatectl set-timezone Europe/Paris --adjust-system-clock
