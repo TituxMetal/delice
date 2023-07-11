@@ -1,10 +1,9 @@
 #!/bin/bash
 
 
-apt install -y vim htop git bash-completion rsync curl wget \
-  chrony modemmanager ufw iwd dnsutils libnss-mdns avahi-daemon \
-  build-essential libpam0g-dev libxcb-xkb-dev \
-  netselect-apt lynis duf systemd-zram-generator
+apt install -y vim htop git bash-completion rsync curl wget chrony modemmanager ufw iwd dnsutils libnss-mdns avahi-daemon \
+  build-essential libpam0g-dev libxcb-xkb-dev fdisk mtools xfsprogs dosfstools zip unzip unrar p7zip-full f2fs-tools exfatprogs \
+  gpart udftools netselect-apt lynis duf systemd-zram-generator
 
 systemctl enable chrony ssh avahi-daemon fstrim.timer ufw iwd ModemManager
 
