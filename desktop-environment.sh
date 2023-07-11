@@ -44,8 +44,8 @@ apt install -y lxappearance fonts-recommended fonts-font-awesome fonts-terminus 
 
 # Utils
 apt install -y neofetch alacritty rofi pcmanfm feh galculator dex xarchiver gparted gvfs gphoto2 gmtp nfs-common libgsf-1-114 \
-sshfs fuseiso file-roller policykit-1-gnome network-manager timeshift gvfs-backends gvfs-fuse dunst libnotify-bin figlet \
-qimgv l3afpad redshift cpu-x ghostwriter
+  sshfs fuseiso file-roller policykit-1-gnome network-manager timeshift gvfs-backends gvfs-fuse dunst libnotify-bin figlet \
+  qimgv l3afpad redshift cpu-x ghostwriter
 
 # Web Browser
 apt install -y torbrowser-launcher firefox-esr firefox-esr-l10n-fr fonts-lmodern libcanberra0 libcanberra-gtk0
