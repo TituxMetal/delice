@@ -51,7 +51,7 @@ apt install -y neofetch alacritty rofi pcmanfm feh galculator dex xarchiver gpar
 apt install -y torbrowser-launcher firefox-esr firefox-esr-l10n-fr fonts-lmodern libcanberra0 libcanberra-gtk0
 
 # Office
-apt install -y gpa gnupg ghostscript libreoffice-gtk libreoffice-l10n-fr libreoffice-help-fr
+apt install -y gpa gnupg ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreoffice-help-fr
 
 # X server
 apt install -y xbindkeys xdg-utils xdg-user-dirs xdg-user-dirs-gtk xbindkeys xcompmgr numlockx tumbler xbacklight xvkbd xinput
