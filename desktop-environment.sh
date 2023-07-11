@@ -58,3 +58,6 @@ apt install -y xbindkeys xdg-utils xdg-user-dirs xdg-user-dirs-gtk xbindkeys xco
 
 # Xfce Desktop
 apt install -y task-xfce-desktop xfce4-mpc-plugin xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin adwaita-qt qt5ct
+
+# Re-enable Ly as display manager and remove lightdm
+systemctl disable display-manager.service && apt remove --purge -y lightdm lightdm-gtk-greeter && apt -y autoremove && systemctl enable ly
