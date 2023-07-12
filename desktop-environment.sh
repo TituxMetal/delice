@@ -1,32 +1,32 @@
 #!/bin/bash
 
-# Video drivers
+# Video drivers: please uncomment Intel or Nvidia if necessary
 
 # Generics
 apt install -y mesa-va-drivers mesa-utils mesa-vdpau-drivers mesa-vulkan-drivers libvdpau-va-gl1 xserver-xorg-video-vesa
 
 # Intel Graphics
-apt install -y libva2 intel-media-va-driver xserver-xorg-video-intel
+# apt install -y libva2 intel-media-va-driver xserver-xorg-video-intel
 
 # Virt Manager
 apt install -y spice-vdagent xserver-xorg-video-qxl
 
 # Nvidia
-apt install -y xserver-xorg-video-nouveau nvidia-vaapi-driver
+# apt install -y xserver-xorg-video-nouveau nvidia-vaapi-driver
 
-# Multimedia
+# Multimedia: please uncomment what you need
 
 # Players
 apt install -y vlc quodlibet shotwell evince mpd playerctl
 
 # Editors
-apt install -y gimp inkscape scour vokoscreen-ng
+# apt install -y gimp inkscape scour vokoscreen-ng
 
 # Burn
-apt install -y libdvd-pkg brasero dvdauthor dvdbackup dvd+rw-tools libdvdread8 libdvdnav4 libcdio19 libisoburn1
+# apt install -y libdvd-pkg brasero dvdauthor dvdbackup dvd+rw-tools libdvdread8 libdvdnav4 libcdio19 libisoburn1
 
 # Rip/Encode
-apt install -y asunder handbrake handbrake-cli
+# apt install -y asunder handbrake handbrake-cli
 
 # Gstreamer 
 apt install -y gstreamer1.0-vaapi gstreamer1.0-alsa gstreamer1.0-plugins-ugly gstreamer1.0-plugins-good gstreamer1.0-plugins-base \
@@ -37,7 +37,7 @@ apt install -y libfdk-aac2 fdkaac libvorbis0a libdca0 libwebpmux3 libwebpdemux2 
 ogmtools ffmpeg ffmpegthumbnailer faac libfaad2 lame flac wavpack pavucontrol alsa-utils pulseaudio
 
 # Bluetooth
-apt install -y bluez bluez-firmware bluez-tools pulseaudio-module-bluetooth blueman
+# apt install -y bluez bluez-firmware bluez-tools pulseaudio-module-bluetooth blueman
 
 # Themes and fonts
 apt install -y lxappearance fonts-recommended fonts-font-awesome fonts-terminus papirus-icon-theme gtk-update-icon-cache arc-theme
@@ -57,7 +57,7 @@ apt install -y gpa gnupg ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreo
 apt install -y xbindkeys xdg-utils xdg-user-dirs xdg-user-dirs-gtk xbindkeys xcompmgr numlockx tumbler xbacklight xvkbd xinput
 
 # Xfce Desktop
-apt install -y task-xfce-desktop xfce4-mpc-plugin xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin adwaita-qt qt5ct
+# apt install -y task-xfce-desktop xfce4-mpc-plugin xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin adwaita-qt qt5ct
 
 # Re-enable Ly as display manager and remove lightdm
-systemctl disable display-manager.service && apt remove --purge -y lightdm lightdm-gtk-greeter && apt -y autoremove && systemctl enable ly
+# systemctl disable display-manager.service && apt remove --purge -y lightdm lightdm-gtk-greeter && apt -y autoremove && systemctl enable ly
