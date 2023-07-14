@@ -1,5 +1,25 @@
 #!/bin/bash
 
+apt install -y task-xfce-desktop spice-vdagent xserver-xorg-video-qxl xserver-xorg-video-vesa accountsservice slick-greeter \
+  fonts-terminus papirus-icon-theme gtk-update-icon-cache arc-theme \
+  firefox-esr firefox-esr-l10n-fr fonts-lmodern \
+  libreoffice-gtk3 libreoffice-l10n-fr
+
+# Pre fill default user in lightdm
+
+``` bash
+mkdir -p /etc/lightdm/lightdm.conf.d && touch /etc/lightdm/lightdm.conf.d/auto-user.conf \
+  && cat > /etc/lightdm/lightdm.conf.d/auto-user.conf<< EOF
+[SeatDefaults]
+greeter-hide-users=false
+greeter-show-manual-login=true
+EOF
+```
+
+
+
+
+
 # Video drivers: please uncomment Intel or Nvidia if necessary
 
 # Generics
@@ -57,10 +77,7 @@ apt install -y gpa gnupg ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreo
 apt install -y xbindkeys xdg-utils xdg-user-dirs xdg-user-dirs-gtk xbindkeys xcompmgr numlockx tumbler xbacklight xvkbd xinput
 
 # Xfce Desktop
-# apt install -y task-xfce-desktop xfce4-mpc-plugin xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin adwaita-qt qt5ct
-
-# Kde Plasma
-apt install kde-standard
+# xfce4-mpc-plugin xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin adwaita-qt qt5ct
 
 # Re-enable Ly as display manager and remove lightdm
 # systemctl disable display-manager.service && apt remove --purge -y lightdm lightdm-gtk-greeter && apt -y autoremove && systemctl enable ly
