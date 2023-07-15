@@ -1,73 +1,135 @@
-# If not running interactively, don't do anything
-case $- in
-    *i*) ;;
-      *) return;;
-esac
+#==============================================================================
+#  ~/.bashrc
+#  executed by bash(1) for non-login shells.
+#==============================================================================
 
-# don't put duplicate lines or lines starting with space in the history.
-# See bash(1) for more options
-HISTCONTROL=ignoreboth
+# Modify this file to reflect your specific requirements
 
-# append to the history file, don't overwrite it
-shopt -s histappend
+#------------------------------------------------------------------------------
+#  Global aliases & functions #
+#------------------------------------------------------------------------------
 
-# for setting history length see HISTSIZE and HISTFILESIZE in bash(1)
-HISTSIZE=1000
-HISTFILESIZE=2000
+_bash_history_sync() {
+  builtin history -a
+  HISTFILESIZE=$HISTSIZE
+  builtin history -c
+  builtin history -r
+}
 
-# Add .bin directory to PATH
-PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.bin:${HOME}/.local/bin:${PATH}"
+history() {
+  _bash_history_sync
+  builtin history "$@"
+}
+
+parseGitBranch() {
+  git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
+}
+
+### extract
+extract() {
+  if [ -f $1 ]; then
+    case $1 in
+    *.tar.bz2) tar xjf $1 ;;
+    *.tar.gz) tar xzf $1 ;;
+    *.bz2) bunzip2 $1 ;;
+    *.rar) unrar e $1 ;;
+    *.gz) gunzip $1 ;;
+    *.tar) tar xf $1 ;;
+    *.tbz2) tar xjf $1 ;;
+    *.tgz) tar xzf $1 ;;
+    *.zip) unzip $1 ;;
+    *.Z) uncompress $1 ;;
+    *.7z) 7z x $1 ;;
+    *.xz) xz -dk $1 ;;
+    *) echo "'$1' cannot be extracted via extract()" ;;
+    esac
+  else
+    echo "'$1' is not a valid file"
+  fi
+}
 
 # check the window size after each command and, if necessary,
 # update the values of LINES and COLUMNS.
 shopt -s checkwinsize
 
-# make less more friendly for non-text input files, see lesspipe(1)
-[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
+# If set, the pattern "**" used in a pathname expansion context will
+# match all files and zero or more directories and subdirectories.
+shopt -s globstar
 
-# set variable identifying the chroot you work in (used in the prompt below)
-if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
-    debian_chroot=$(cat /etc/debian_chroot)
-fi
+# append to the history file, don't overwrite it
+shopt -s histappend
 
-# set a fancy prompt (non-color, unless we know we "want" color)
-case "$TERM" in
-    xterm-color|*-256color) color_prompt=yes;;
-esac
+#------------------------------------------------------------------------------
+#  OS specific aliases & functions
+#------------------------------------------------------------------------------
 
-force_color_prompt=yes
+case "$OSTYPE" in linux*)
 
-if [ "$color_prompt" = yes ]; then
-    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
-else
-    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
-fi
+    ### determine distro
+  case $(/bin/grep ^ID= /etc/os-release) in
+  ID=debian )
+    # apt aliases
+    if [ -f /usr/bin/flatpak ]; then
+      alias patch='sudo apt update && sudo apt upgrade && sudo apt dist-upgrade && sudo flatpak update -y'
+    else
+      alias patch='sudo apt update && sudo apt upgrade && sudo apt dist-upgrade'
+    fi
+    alias search='sudo apt search'
+    alias install='sudo apt install'
+    alias clean='sudo apt clean && sudo apt autoclean && sudo apt -y autoremove'
+    alias remove='sudo apt-get --purge remove'
+    alias installed='apt list --installed'
 
-# If this is an xterm set the title to user@host:dir
-case "$TERM" in
-xterm*|rxvt*)
-    PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
+    # source bash_completion
+    if [ -f /etc/bash_completion ]; then
+      . /etc/bash_completion
+    fi
     ;;
-*)
+
+  ID=archlinux )
+    
     ;;
-esac
+    esac
 
-# Alias definitions.
-# You may want to put all your additions into a separate file like
-# ~/.bash_aliases, instead of adding them here directly.
-# See /usr/share/doc/bash-doc/examples in the bash-doc package.
+  alias ..='cd ..'
+  alias ls='ls -lsh --color=auto'
+  alias ll='ls -lsha --color=auto'
+  alias mkdir='mkdir -pv'
+  alias free='free -mt'
+  alias ps='ps auxf'
+  alias ip='ip -c addr'
+  alias psgrep='ps aux | grep -v grep | grep -i -e VSZ -e'
+  alias wget='wget -c'
+  alias histg='history | grep'
+  alias myip='curl ipv4.icanhazip.com'
+  alias grep='grep --color=auto'
+  alias df='df -h'
+  alias free='free -h'
+  alias reload='source ~/.bashrc'
 
-if [ -f ~/.bash_aliases ]; then
-    . ~/.bash_aliases
-fi
+  ### journalctl
+  alias journalctl-log='sudo journalctl -f'
+  alias journalctl-boot='journalctl -b'
+  alias journalctl-boot-previous='journalctl -b  -1'
 
-# enable programmable completion features (you don't need to enable
-# this, if it's already enabled in /etc/bash.bashrc and /etc/profile
-# sources /etc/bash.bashrc).
-if ! shopt -oq posix; then
-  if [ -f /usr/share/bash-completion/bash_completion ]; then
-    . /usr/share/bash-completion/bash_completion
-  elif [ -f /etc/bash_completion ]; then
-    . /etc/bash_completion
-  fi
-fi
+  ### systemctl
+  alias systemctl-depends='systemctl list-dependencies'
+  alias systemctl-all='systemctl list-unit-files --type=service'
+  alias systemctl-enabled='systemctl --type=service --state=active --no-pager list-units'
+  alias systemctl-timers='systemctl list-timers --all'
+  alias systemctl-boot-speed='systemd-analyze blame'
+
+  ### hardware
+  alias show-pci="lspci"
+  alias show-hardware="sudo lshw -short"
+  alias show-hardware-full="sudo lshw"
+  alias show-hardware-network="sudo lshw -class network"
+  alias show-cpu="lscpu"
+  alias show-hardware-report="sudo hwinfo"
+  alias show-usb="sudo hwinfo"
+  alias show-dmi="sudo dmidecode"
+  alias show-disk="sudo hdparm -i /dev/sda"
+  alias cputemp='sensors |grep Core'
+
+  ;;
+  esac
