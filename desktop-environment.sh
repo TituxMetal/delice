@@ -70,3 +70,6 @@ apt install -y gimp inkscape scour
 
 # Re-enable Ly as display manager and remove lightdm
 # systemctl disable display-manager.service && apt remove --purge -y lightdm lightdm-gtk-greeter && apt -y autoremove && systemctl enable ly
+
+# Copy all config files and directories in users .config
+cp -rv .config/* ~/.config/
