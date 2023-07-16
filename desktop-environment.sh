@@ -32,7 +32,7 @@ apt install -y xbindkeys xdg-utils xdg-user-dirs xdg-user-dirs-gtk xbindkeys xco
 
 # Themes and fonts
 apt install -y lxappearance fonts-recommended fonts-ubuntu fonts-font-awesome fonts-lmodern fonts-terminus \
-  papirus-icon-theme gtk-update-icon-cache arc-theme adwaita-qt qt5ct
+  papirus-icon-theme gtk-update-icon-cache arc-theme adwaita-qt qt5-style-kvantum
 
 # Web Browser
 apt install -y torbrowser-launcher firefox-esr firefox-esr-l10n-fr
