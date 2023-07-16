@@ -38,7 +38,8 @@ apt install -y lxappearance fonts-recommended fonts-ubuntu fonts-font-awesome fo
 apt install -y torbrowser-launcher firefox-esr firefox-esr-l10n-fr
 
 # Office Tools
-apt install -y gpa gnupg ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreoffice-help-fr galculator l3afpad ghostwriter
+apt install -y gpa gnupg ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreoffice-help-fr \
+  galculator l3afpad ghostwriter libtext-multimarkdown-perl cmark pandoc
 
 # Other Utils
 apt install -y neofetch alacritty rofi pcmanfm libfm-tools libusbmuxd-tools feh dex xarchiver gparted gphoto2 sshfs nfs-common fuseiso \
