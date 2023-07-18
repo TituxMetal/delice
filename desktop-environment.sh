@@ -37,10 +37,12 @@ main() {
 
   # Pre fill default user in lightdm
 
-  sudo mkdir -p /etc/lightdm/lightdm.conf.d && sudo touch /etc/lightdm/lightdm.conf.d/auto-user.conf && sudo cat > /etc/lightdm/lightdm.conf.d/auto-user.conf<< EOF
+  sudo mkdir -p /etc/lightdm/lightdm.conf.d && sudo touch /etc/lightdm/lightdm.conf.d/user.conf
+  sudo sh -c "cat > /etc/lightdm/lightdm.conf.d/user.conf" <<-EOF
 [SeatDefaults]
   greeter-hide-users=false
   greeter-show-manual-login=true
+  display-setup-script=xrandr --output $(xrandr | grep " connected" | awk '{print $1}') --mode 1920x1200
 EOF
 
 
