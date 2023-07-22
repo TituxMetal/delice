@@ -42,7 +42,7 @@ main() {
   sudo timedatectl set-ntp yes
 
   # Setup Ufw firewall
-  sudo ufw default deny incoming && ufw allow ssh && ufw default allow outgoing
+  sudo ufw default deny incoming && sudo ufw allow ssh && sudo ufw default allow outgoing
 
   # Install and setup Ly display manager
   # git clone --recurse-submodules https://github.com/fairyglade/ly && cd ly
