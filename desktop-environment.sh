@@ -42,7 +42,7 @@ main() {
 [SeatDefaults]
   greeter-hide-users=false
   greeter-show-manual-login=true
-  display-setup-script=xrandr --output $(xrandr | grep " connected" | awk '{print $1}') --mode 1920x1200
+#  display-setup-script=xrandr --output $(xrandr | grep " connected" | awk '{print $1}') --mode 1920x1200
 EOF
 
 
@@ -54,7 +54,7 @@ EOF
     papirus-icon-theme gtk-update-icon-cache arc-theme adwaita-qt qt5-style-kvantum
 
   # Web Browser
-  sudo apt install -y torbrowser-launcher firefox-esr firefox-esr-l10n-fr
+  sudo apt install -y firefox-esr firefox-esr-l10n-fr
 
   # Office Tools
   sudo apt install -y gpa gnupg ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreoffice-help-fr \
@@ -92,7 +92,7 @@ EOF
 
   # Copy all config files and directories in users .config
   cp -rv .config/* ~/.config/
-
+  cp -rv wallpapers ~/
 }
 
 time main
