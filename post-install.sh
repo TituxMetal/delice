@@ -33,7 +33,7 @@ main() {
   # Run this script as regular user
   sudo apt install -y vim htop git bash-completion rsync curl wget chrony modemmanager ufw iwd dnsutils libnss-mdns avahi-daemon \
     build-essential libpam0g-dev libxcb-xkb-dev fdisk mtools xfsprogs dosfstools zip unzip unrar p7zip-full f2fs-tools exfatprogs \
-    gpart udftools netselect-apt lynis duf systemd-zram-generator
+    gpart udftools netselect-apt lynis duf lm-sensors systemd-zram-generator
 
   sudo systemctl enable chrony ssh avahi-daemon fstrim.timer ufw iwd ModemManager
 
@@ -49,6 +49,32 @@ main() {
   # make && make install installsystemd
 
   # systemctl enable ly.service && systemctl disable getty@tty2.service
+
+  # Zram configuration
+  sudo bash -c 'cat > "/etc/systemd/zram-generator.conf"' << EOF
+[zram0]
+zram-size = ram / 2
+compression-algorithm = zstd
+swap-priority = 100
+fs-type = swap
+EOF
+
+  sudo mkdir -pv /etc/sysctl.d
+
+  # Add zram parameters
+  sudo bash -c 'cat > "/etc/sysctl.d/99-vm-zram-parameters.conf"' << EOF
+vm.swappiness = 180
+vm.watermark_boost_factor = 0
+vm.watermark_scale_factor = 125
+vm.page-cluster = 0
+EOF
+
+  # Reload systemd daemon
+  sudo systemctl daemon-reload
+  # Start zram
+  sudo systemctl start /dev/zram0
+  # Check zram is enabled
+  sudo zramctl
 
   # Add dot files to regular user
   cp -v dotfiles/.* $HOME/
