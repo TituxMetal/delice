@@ -57,7 +57,7 @@ EOF
   sudo apt install -y firefox-esr firefox-esr-l10n-fr
 
   # Office Tools
-  sudo apt install -y gpa gnupg ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreoffice-help-fr \
+  sudo apt install -y seahorse gnupg ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreoffice-help-fr \
     galculator l3afpad ghostwriter libtext-multimarkdown-perl cmark pandoc
 
   # Other Utils
