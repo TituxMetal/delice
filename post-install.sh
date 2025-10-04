@@ -31,7 +31,7 @@ main() {
   sudo apt update && sudo apt upgrade && sudo apt dist-upgrade
 
   # Run this script as regular user
-  sudo apt install -y vim htop git bash-completion rsync curl wget chrony modemmanager ufw iwd dnsutils libnss-mdns avahi-daemon \
+  sudo apt install -y vim htop git bash-completion rsync curl wget chrony modemmanager ufw iwd bind9-dnsutils libnss-mdns avahi-daemon \
     build-essential libpam0g-dev libxcb-xkb-dev fdisk mtools xfsprogs dosfstools zip unzip unrar p7zip-full f2fs-tools exfatprogs \
     gpart udftools netselect-apt lynis duf lm-sensors systemd-zram-generator
 
