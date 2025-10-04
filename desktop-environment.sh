@@ -62,7 +62,7 @@ EOF
 
   # Other Utils
   sudo apt install -y neofetch alacritty rofi pcmanfm libfm-tools libusbmuxd-tools feh dex xarchiver gparted gphoto2 sshfs nfs-common fuseiso \
-    file-roller timeshift gvfs gvfs-backends gvfs-fuse dunst libnotify-bin figlet qimgv redshift cpu-x cryptsetup policykit-1-gnome \
+    file-roller timeshift gvfs gvfs-backends gvfs-fuse dunst libnotify-bin figlet qimgv redshift cpu-x cryptsetup \
     pavucontrol alsa-utils pulseaudio ffmpeg ffmpegthumbnailer
 
   # Multimedia: please uncomment what you need
