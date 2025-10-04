@@ -78,7 +78,7 @@ EOF
 
   # Add dot files to regular user
   cp -v dotfiles/.* $HOME/
-  ln -s .profile .xsessionrc
+  ln -s $HOME/.profile $HOME/.xsessionrc
 
   # Add dot files to root user
   sudo -s cp -v dotfiles/root/.* /root/
