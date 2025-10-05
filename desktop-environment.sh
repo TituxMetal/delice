@@ -70,27 +70,28 @@ EOF
   sudo apt install -y gstreamer1.0-x gstreamer1.0-libav
 
   # Players
-  sudo apt install -y vlc quodlibet shotwell evince mpd playerctl x265 x264 libdvd-pkg libdvdread8 libdvdnav4 libcdio19
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y vlc quodlibet shotwell evince mpd playerctl x265 x264 libdvd-pkg libdvdread8 libdvdnav4 libcdio19
 
   # Download libdvdcss2 source files
-  sudo dpkg-reconfigure libdvd-pkg
+  sudo DEBIAN_FRONTEND=noninteractive dpkg-reconfigure libdvd-pkg
 
   # Editors
   sudo apt install -y gimp inkscape scour
 
   # Burn
-  # sudo apt install -y brasero dvdauthor dvdbackup dvd+rw-tools libisoburn1
+  sudo apt install -y brasero dvdauthor dvdbackup dvd+rw-tools libisoburn1
 
   # Rip/Encode
-  # sudo apt install -y asunder handbrake handbrake-cli lame ogmtools faac flac x265 x264
+  sudo apt install -y asunder handbrake handbrake-cli lame ogmtools faac flac x265 x264
 
   # Bluetooth
-  # sudo apt install -y bluez bluez-firmware bluez-tools pulseaudio-module-bluetooth blueman
+  sudo apt install -y bluez bluez-firmware bluez-tools pulseaudio-module-bluetooth blueman
 
   # Re-enable Ly as display manager and remove lightdm
   # systemctl disable display-manager.service && sudo apt remove --purge -y lightdm lightdm-gtk-greeter && sudo apt -y autoremove && systemctl enable ly
 
   # Copy all config files and directories in users .config
+  mkdir -p ~/.config
   cp -rv .config/* ~/.config/
   cp -rv wallpapers ~/
 }
