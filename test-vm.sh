@@ -51,6 +51,40 @@ RCEOF
   sed -i "s|SCRIPT_PLACEHOLDER|/usr/local/bin/${script_name}|g" "$output_file"
 }
 
+generatePostInstallScript() {
+  local script_name="$1"
+  local output_file="$2"
+  cat > "$output_file" <<POSTSCRIPT
+#!/bin/bash
+export HOME=/home/debian
+
+$(waitForNetwork)
+
+cd /home/debian/delice
+./post-install.sh 2>&1 | tee -a /var/log/test-output.log
+echo "TEST_COMPLETE" >> /var/log/test-output.log
+poweroff
+POSTSCRIPT
+  chmod +x "$output_file"
+  createRcLocal "$script_name" /tmp/rc.local
+}
+
+injectPostInstallFiles() {
+  local snapshot_image="$1"
+  local script_path="$2"
+
+  virt-customize -a "$snapshot_image" \
+    --mkdir /home/debian/delice \
+    --copy-in ./post-install.sh:/home/debian/delice/ \
+    --copy-in ./sources.list:/home/debian/delice/ \
+    --copy-in ./dotfiles:/home/debian/delice/ \
+    --copy-in "$script_path":/usr/local/bin/ \
+    --copy-in /tmp/rc.local:/etc/ \
+    --run-command 'chown -R debian:debian /home/debian/delice' \
+    --run-command "chmod +x /usr/local/bin/$(basename "$script_path")" \
+    --run-command 'chmod +x /etc/rc.local' || { error "Failed to customize VM image"; exit 1; }
+}
+
 monitorVMCompletion() {
   local vm_name="$1"
   local timeout="$2"
@@ -82,22 +116,25 @@ validateVMExists() {
 
 cleanupOldLogs() {
   local max_logs=5
+  shopt -s nullglob
 
   # Clean up old post-install test logs
-  local post_count
-  post_count=$(ls -1 test-post-install-*.log 2>/dev/null | wc -l)
+  local post_files=(test-post-install-*.log)
+  local post_count=${#post_files[@]}
   if [[ $post_count -gt $max_logs ]]; then
     log "Cleaning up old post-install test logs (keeping last ${max_logs})"
-    ls -1t test-post-install-*.log | tail -n +$((max_logs + 1)) | xargs rm -f
+    printf '%s\0' "${post_files[@]}" | xargs -0 ls -t | tail -n +$((max_logs + 1)) | xargs -d '\n' rm -f
   fi
 
   # Clean up old desktop test logs
-  local desktop_count
-  desktop_count=$(ls -1 test-desktop-*.log 2>/dev/null | wc -l)
+  local desktop_files=(test-desktop-*.log)
+  local desktop_count=${#desktop_files[@]}
   if [[ $desktop_count -gt $max_logs ]]; then
     log "Cleaning up old desktop test logs (keeping last ${max_logs})"
-    ls -1t test-desktop-*.log | tail -n +$((max_logs + 1)) | xargs rm -f
+    printf '%s\0' "${desktop_files[@]}" | xargs -0 ls -t | tail -n +$((max_logs + 1)) | xargs -d '\n' rm -f
   fi
+
+  shopt -u nullglob
 }
 
 showLogSummary() {
@@ -295,33 +332,9 @@ main() {
   if isFirstDesktopRun; then
     log "First desktop run: post-install → backup → desktop"
 
-    # Create the run script for POST-INSTALL ONLY
-    cat > /tmp/run-post.sh <<POSTSCRIPT
-#!/bin/bash
-export HOME=/home/debian
-
-$(waitForNetwork)
-
-cd /home/debian/delice
-./post-install.sh 2>&1 | tee -a /var/log/test-output.log
-echo "TEST_COMPLETE" >> /var/log/test-output.log
-poweroff
-POSTSCRIPT
-    chmod +x /tmp/run-post.sh
-
-    createRcLocal "run-post.sh" /tmp/rc.local
-
-    # Inject post-install files only
-    virt-customize -a "$SNAPSHOT_IMAGE" \
-      --mkdir /home/debian/delice \
-      --copy-in ./post-install.sh:/home/debian/delice/ \
-      --copy-in ./sources.list:/home/debian/delice/ \
-      --copy-in ./dotfiles:/home/debian/delice/ \
-      --copy-in /tmp/run-post.sh:/usr/local/bin/ \
-      --copy-in /tmp/rc.local:/etc/ \
-      --run-command 'chown -R debian:debian /home/debian/delice' \
-      --run-command 'chmod +x /usr/local/bin/run-post.sh' \
-      --run-command 'chmod +x /etc/rc.local' || { error "Failed to customize VM image"; exit 1; }
+    # Create and inject post-install script
+    generatePostInstallScript "run-post.sh" /tmp/run-post.sh
+    injectPostInstallFiles "$SNAPSHOT_IMAGE" /tmp/run-post.sh
 
     log "Starting VM for post-install"
     sudo virsh --connect qemu:///system start "$VM_NAME" || { error "Failed to start VM"; exit 1; }
@@ -392,33 +405,9 @@ DESKTOPSCRIPT
   if isPostOnlyRun; then
     log "Running post-install only"
 
-    # Create the run script for POST-INSTALL ONLY
-    cat > /tmp/run-post-only.sh <<POSTSCRIPT
-#!/bin/bash
-export HOME=/home/debian
-
-$(waitForNetwork)
-
-cd /home/debian/delice
-./post-install.sh 2>&1 | tee -a /var/log/test-output.log
-echo "TEST_COMPLETE" >> /var/log/test-output.log
-poweroff
-POSTSCRIPT
-    chmod +x /tmp/run-post-only.sh
-
-    createRcLocal "run-post-only.sh" /tmp/rc.local
-
-    # Inject post-install files only
-    virt-customize -a "$SNAPSHOT_IMAGE" \
-      --mkdir /home/debian/delice \
-      --copy-in ./post-install.sh:/home/debian/delice/ \
-      --copy-in ./sources.list:/home/debian/delice/ \
-      --copy-in ./dotfiles:/home/debian/delice/ \
-      --copy-in /tmp/run-post-only.sh:/usr/local/bin/ \
-      --copy-in /tmp/rc.local:/etc/ \
-      --run-command 'chown -R debian:debian /home/debian/delice' \
-      --run-command 'chmod +x /usr/local/bin/run-post-only.sh' \
-      --run-command 'chmod +x /etc/rc.local' || { error "Failed to customize VM image"; exit 1; }
+    # Create and inject post-install script
+    generatePostInstallScript "run-post-only.sh" /tmp/run-post-only.sh
+    injectPostInstallFiles "$SNAPSHOT_IMAGE" /tmp/run-post-only.sh
 
     log "Starting VM for post-install"
     sudo virsh --connect qemu:///system start "$VM_NAME" || { error "Failed to start VM"; exit 1; }
