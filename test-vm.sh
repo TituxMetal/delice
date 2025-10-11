@@ -1,13 +1,18 @@
 #!/bin/bash
 set -uo pipefail
 
-readonly BASE_IMAGE="${BASE_IMAGE:-/home/titux/virt-manager/disk/debian-stable-base.qcow2}"
+readonly BASE_VM_NAME="debian-stable-base"
 readonly VM_NAME="test-postinstall-$(date +%s)"
 readonly SNAPSHOT_IMAGE="/home/titux/virt-manager/snapshot/${VM_NAME}.qcow2"
-readonly LOG_FILE="./test-results-$(date +%Y%m%d-%H%M%S).log"
+readonly LOG_TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+readonly POST_INSTALL_LOG="./test-post-install-${LOG_TIMESTAMP}.log"
+readonly DESKTOP_LOG="./test-desktop-${LOG_TIMESTAMP}.log"
 readonly MEMORY="2048"
 readonly VCPUS="2"
 readonly TIMEOUT=600
+
+readonly POST_INSTALL_BACKUP_NAME="debian-post-install-backup"
+readonly POST_INSTALL_BACKUP_DISK="/home/titux/virt-manager/disk/debian-post-install-backup.qcow2"
 
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -15,9 +20,210 @@ readonly YELLOW='\033[1;33m'
 readonly NC='\033[0m'
 
 SCRIPT_TO_TEST=""
+CREATED_VMS=()
+CREATED_SNAPSHOTS=()
 
 log() { echo -e "${GREEN}[$(date +%H:%M:%S)]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
+waitForNetwork() {
+  cat <<'NETWORK_WAIT'
+# Wait for network to be ready
+echo "Waiting for network..." >> /var/log/test-output.log
+for i in {1..30}; do
+  if ping -c1 -W2 deb.debian.org &>/dev/null; then
+    echo "Network is ready" >> /var/log/test-output.log
+    break
+  fi
+  sleep 2
+done
+NETWORK_WAIT
+}
+
+createRcLocal() {
+  local script_name="$1"
+  local output_file="$2"
+  cat > "$output_file" <<'RCEOF'
+#!/bin/bash
+SCRIPT_PLACEHOLDER &
+exit 0
+RCEOF
+  sed -i "s|SCRIPT_PLACEHOLDER|/usr/local/bin/${script_name}|g" "$output_file"
+}
+
+monitorVMCompletion() {
+  local vm_name="$1"
+  local timeout="$2"
+  local task_name="${3:-VM}"
+
+  log "Waiting for ${task_name} to complete (max ${timeout}s)..."
+  local elapsed=0
+  while sudo virsh --connect qemu:///system domstate "$vm_name" 2>/dev/null | grep -q running; do
+    sleep 10
+    elapsed=$((elapsed + 10))
+    if [[ $elapsed -ge $timeout ]]; then
+      error "${task_name} timeout after ${timeout}s"
+      return 1
+    fi
+    log "[$elapsed/${timeout}s] ${task_name} running..."
+  done
+  log "${task_name} complete"
+  return 0
+}
+
+validateVMExists() {
+  local vm_name="$1"
+  if ! sudo virsh --connect qemu:///system list --all | grep -q "$vm_name"; then
+    error "Base VM '$vm_name' does not exist"
+    return 1
+  fi
+  return 0
+}
+
+cleanupOldLogs() {
+  local max_logs=5
+
+  # Clean up old post-install test logs
+  local post_count
+  post_count=$(ls -1 test-post-install-*.log 2>/dev/null | wc -l)
+  if [[ $post_count -gt $max_logs ]]; then
+    log "Cleaning up old post-install test logs (keeping last ${max_logs})"
+    ls -1t test-post-install-*.log | tail -n +$((max_logs + 1)) | xargs rm -f
+  fi
+
+  # Clean up old desktop test logs
+  local desktop_count
+  desktop_count=$(ls -1 test-desktop-*.log 2>/dev/null | wc -l)
+  if [[ $desktop_count -gt $max_logs ]]; then
+    log "Cleaning up old desktop test logs (keeping last ${max_logs})"
+    ls -1t test-desktop-*.log | tail -n +$((max_logs + 1)) | xargs rm -f
+  fi
+}
+
+showLogSummary() {
+  local log_file="$1"
+  local log_name="${2:-Test}"
+
+  echo ""
+  log "${log_name} results saved to: $log_file"
+  log "Showing last 30 lines of output:"
+  echo "----------------------------------------"
+  tail -n 30 "$log_file"
+  echo "----------------------------------------"
+  echo ""
+  log "Full log available at: $log_file"
+  echo ""
+}
+
+backupExists() {
+  sudo virsh --connect qemu:///system list --all | grep -q "$POST_INSTALL_BACKUP_NAME"
+}
+
+isDesktopTest() {
+  [[ "$SCRIPT_TO_TEST" == "desktop" ]]
+}
+
+hasBackup() {
+  backupExists
+}
+
+useBackupSource() {
+  isDesktopTest && hasBackup
+}
+
+getCloneSource() {
+  useBackupSource && echo "$POST_INSTALL_BACKUP_NAME" || echo "$BASE_VM_NAME"
+}
+
+isBackupSource() {
+  [[ "$1" == "$POST_INSTALL_BACKUP_NAME" ]]
+}
+
+
+
+runDesktopOnBackup() {
+  local desktop_vm_name="test-desktop-$(date +%s)"
+  local desktop_snapshot="/home/titux/virt-manager/snapshot/${desktop_vm_name}.qcow2"
+
+  CREATED_VMS+=("$desktop_vm_name")
+  CREATED_SNAPSHOTS+=("$desktop_snapshot")
+
+  sudo virt-clone --connect qemu:///system \
+    --original "$POST_INSTALL_BACKUP_NAME" \
+    --name "$desktop_vm_name" \
+    --file "$desktop_snapshot" || { error "Failed to clone backup VM"; exit 1; }
+
+  sudo chown $USER:$USER "$desktop_snapshot"
+
+  cat > /tmp/run-desktop.sh <<DESKTOPSCRIPT
+#!/bin/bash
+export HOME=/home/debian
+
+# Clear any previous log content from post-install backup
+echo "Starting desktop test after post-install backup..." > /var/log/test-output.log
+
+$(waitForNetwork)
+
+cd /home/debian/delice
+./desktop-environment.sh 2>&1 | tee -a /var/log/test-output.log
+echo "TEST_COMPLETE" >> /var/log/test-output.log
+poweroff
+DESKTOPSCRIPT
+  chmod +x /tmp/run-desktop.sh
+
+  createRcLocal "run-desktop.sh" /tmp/rc.local
+
+  virt-customize -a "$desktop_snapshot" \
+    --copy-in ./desktop-environment.sh:/home/debian/delice/ \
+    --copy-in ./.config:/home/debian/delice/ \
+    --copy-in ./wallpapers:/home/debian/delice/ \
+    --copy-in /tmp/run-desktop.sh:/usr/local/bin/ \
+    --copy-in /tmp/rc.local:/etc/ \
+    --run-command 'chown -R debian:debian /home/debian/delice' \
+    --run-command 'chmod +x /usr/local/bin/run-desktop.sh' \
+    --run-command 'chmod +x /etc/rc.local' || { error "Failed to customize VM image"; exit 1; }
+
+  sudo virsh --connect qemu:///system start "$desktop_vm_name" || { error "Failed to start VM"; exit 1; }
+
+  if ! monitorVMCompletion "$desktop_vm_name" "$TIMEOUT" "Desktop VM"; then
+    error "Desktop VM timeout after ${TIMEOUT}s"
+    sudo virsh --connect qemu:///system destroy "$desktop_vm_name" 2>/dev/null || true
+    sudo virsh --connect qemu:///system undefine "$desktop_vm_name" --nvram 2>/dev/null || true
+    rm -f "$desktop_snapshot"
+    exit 1
+  fi
+
+  virt-cat -a "$desktop_snapshot" /var/log/test-output.log > "$DESKTOP_LOG" 2>/dev/null
+
+  echo ""
+  log "Desktop test results (saved to $DESKTOP_LOG):"
+  echo ""
+
+  grep -q "TEST_COMPLETE" "$DESKTOP_LOG" && log "Desktop test completed successfully!" || { error "Desktop test failed or did not complete"; exit 1; }
+
+  sudo virsh --connect qemu:///system destroy "$desktop_vm_name" 2>/dev/null || true
+  sudo virsh --connect qemu:///system undefine "$desktop_vm_name" --nvram 2>/dev/null || true
+  rm -f "$desktop_snapshot"
+}
+
+needsBackupCreation() {
+  isDesktopTest && ! hasBackup
+}
+
+shouldCreateBackup() {
+  needsBackupCreation
+}
+
+createPostInstallBackup() {
+  log "Creating post-install backup for future desktop runs"
+  sudo virt-clone --connect qemu:///system \
+    --original "$VM_NAME" \
+    --name "$POST_INSTALL_BACKUP_NAME" \
+    --file "$POST_INSTALL_BACKUP_DISK"
+  
+  sudo chown $USER:$USER "$POST_INSTALL_BACKUP_DISK"
+  log "Post-install backup created successfully"
+}
 
 parseArgs() {
   while [[ $# -gt 0 ]]; do
@@ -42,108 +248,205 @@ parseArgs() {
 }
 
 cleanup() {
-  log "Cleaning up"
-  virsh --connect qemu:///system destroy "$VM_NAME" 2>/dev/null || true
-  virsh --connect qemu:///system undefine "$VM_NAME" --nvram 2>/dev/null || true
-  rm -f "$SNAPSHOT_IMAGE"
+  log "Cleaning up all created VMs and snapshots"
+  
+  # Clean up all created VMs
+  for vm_name in "${CREATED_VMS[@]}"; do
+    [[ -n "$vm_name" ]] || continue
+    log "Destroying VM: $vm_name"
+    sudo virsh --connect qemu:///system destroy "$vm_name" 2>/dev/null || true
+    sudo virsh --connect qemu:///system undefine "$vm_name" --nvram 2>/dev/null || true
+  done
+  
+  # Clean up all created snapshots
+  for snapshot in "${CREATED_SNAPSHOTS[@]}"; do
+    [[ -n "$snapshot" ]] && [[ -f "$snapshot" ]] || continue
+    log "Removing snapshot: $snapshot"
+    rm -f "$snapshot"
+  done
+}
+
+isFirstDesktopRun() {
+  isDesktopTest && ! hasBackup
+}
+
+isBackupDesktopRun() {
+  isDesktopTest && hasBackup
+}
+
+isPostOnlyRun() {
+  ! isDesktopTest
 }
 
 main() {
   parseArgs "$@"
   trap cleanup EXIT INT TERM
+  cleanupOldLogs
 
-  log "Creating snapshot from base image"
-  cp "$BASE_IMAGE" "$SNAPSHOT_IMAGE"
+  local source_vm
+  source_vm=$(getCloneSource)
+
+  validateVMExists "$source_vm" || exit 1
+
+  CREATED_VMS+=("$VM_NAME")
+  CREATED_SNAPSHOTS+=("$SNAPSHOT_IMAGE")
+
+  log "Creating VM clone from $source_vm"
+  sudo virt-clone --connect qemu:///system \
+    --original "$source_vm" \
+    --name "$VM_NAME" \
+    --file "$SNAPSHOT_IMAGE" || { error "Failed to clone VM from $source_vm"; exit 1; }
+
+  sudo chown $USER:$USER "$SNAPSHOT_IMAGE"
 
   log "Injecting scripts into disk image"
+  sleep 3
 
-  # Create the run script
-  local script_cmd="./post-install.sh"
-  [[ "$SCRIPT_TO_TEST" == "desktop" ]] && script_cmd="./post-install.sh && ./desktop-environment.sh"
+  isFirstDesktopRun && {
+    log "First desktop run: post-install → backup → desktop"
 
-  cat > /tmp/run-test.sh <<RUNSCRIPT
+    # Create the run script for POST-INSTALL ONLY
+    cat > /tmp/run-post.sh <<POSTSCRIPT
 #!/bin/bash
 export HOME=/home/debian
 
-# Wait for network to be ready
-echo "Waiting for network..." >> /var/log/test-output.log
-for i in {1..30}; do
-  if ping -c1 -W2 deb.debian.org &>/dev/null; then
-    echo "Network is ready" >> /var/log/test-output.log
-    break
-  fi
-  sleep 2
-done
+$(waitForNetwork)
 
 cd /home/debian/delice
-$script_cmd 2>&1 | tee -a /var/log/test-output.log
+./post-install.sh 2>&1 | tee -a /var/log/test-output.log
 echo "TEST_COMPLETE" >> /var/log/test-output.log
 poweroff
-RUNSCRIPT
-  chmod +x /tmp/run-test.sh
+POSTSCRIPT
+    chmod +x /tmp/run-post.sh
 
-  # Inject everything into the disk
-  virt-customize -a "$SNAPSHOT_IMAGE" \
-    --mkdir /home/debian/delice \
-    --copy-in ./post-install.sh:/home/debian/delice/ \
-    --copy-in ./desktop-environment.sh:/home/debian/delice/ \
-    --copy-in ./sources.list:/home/debian/delice/ \
-    --copy-in ./dotfiles:/home/debian/delice/ \
-    --copy-in ./.config:/home/debian/delice/ \
-    --copy-in ./wallpapers:/home/debian/delice/ \
-    --copy-in /tmp/run-test.sh:/usr/local/bin/ \
-    --run-command 'chown -R debian:debian /home/debian/delice' \
-    --run-command 'chmod +x /usr/local/bin/run-test.sh' \
-    --run-command 'cat > /etc/rc.local << EOF
+    createRcLocal "run-post.sh" /tmp/rc.local
+
+    # Inject post-install files only
+    virt-customize -a "$SNAPSHOT_IMAGE" \
+      --mkdir /home/debian/delice \
+      --copy-in ./post-install.sh:/home/debian/delice/ \
+      --copy-in ./sources.list:/home/debian/delice/ \
+      --copy-in ./dotfiles:/home/debian/delice/ \
+      --copy-in /tmp/run-post.sh:/usr/local/bin/ \
+      --copy-in /tmp/rc.local:/etc/ \
+      --run-command 'chown -R debian:debian /home/debian/delice' \
+      --run-command 'chmod +x /usr/local/bin/run-post.sh' \
+      --run-command 'chmod +x /etc/rc.local' || { error "Failed to customize VM image"; exit 1; }
+
+    log "Starting VM for post-install"
+    sudo virsh --connect qemu:///system start "$VM_NAME" || { error "Failed to start VM"; exit 1; }
+
+    monitorVMCompletion "$VM_NAME" "$TIMEOUT" "Post-install" || exit 1
+
+    log "Post-install complete. Extracting logs..."
+    virt-cat -a "$SNAPSHOT_IMAGE" /var/log/test-output.log > "$POST_INSTALL_LOG" 2>/dev/null
+    log "Post-install logs saved to: $POST_INSTALL_LOG"
+
+    log "Creating backup of post-install state"
+    createPostInstallBackup
+
+    log "Running desktop script on backup"
+    runDesktopOnBackup
+
+    return
+  }
+
+  isBackupDesktopRun && {
+    log "Using existing backup for desktop-only run"
+
+    # Create the run script for DESKTOP ONLY
+    cat > /tmp/run-desktop-only.sh <<DESKTOPSCRIPT
 #!/bin/bash
-/usr/local/bin/run-test.sh &
-exit 0
-EOF' \
-    --run-command 'chmod +x /etc/rc.local'
+export HOME=/home/debian
 
-  log "Starting VM"
+# Clear any previous log content from post-install backup
+echo "Starting desktop-only test..." > /var/log/test-output.log
 
-  # Copy NVRAM
-  local nvram_source="/var/lib/libvirt/qemu/nvram/debian-stable-base_VARS.fd"
-  local nvram_dest="/var/lib/libvirt/qemu/nvram/${VM_NAME}_VARS.fd"
-  if [[ -f "$nvram_source" ]]; then
-    cp "$nvram_source" "$nvram_dest"
-  fi
+$(waitForNetwork)
 
-  # Start VM
-  virt-install --connect qemu:///system \
-    --name "$VM_NAME" \
-    --memory "$MEMORY" \
-    --vcpus "$VCPUS" \
-    --disk "$SNAPSHOT_IMAGE",bus=sata \
-    --os-variant debian13 \
-    --boot uefi \
-    --graphics vnc \
-    --network network=default \
-    --noautoconsole \
-    --import
+cd /home/debian/delice
+./desktop-environment.sh 2>&1 | tee -a /var/log/test-output.log
+echo "TEST_COMPLETE" >> /var/log/test-output.log
+poweroff
+DESKTOPSCRIPT
+    chmod +x /tmp/run-desktop-only.sh
 
-  log "Waiting for VM to complete (max ${TIMEOUT}s)..."
+    createRcLocal "run-desktop-only.sh" /tmp/rc.local
 
-  local elapsed=0
-  while virsh --connect qemu:///system domstate "$VM_NAME" 2>/dev/null | grep -q running; do
-    sleep 10
-    elapsed=$((elapsed + 10))
-    if [[ $elapsed -ge $TIMEOUT ]]; then
-      error "Timeout after ${TIMEOUT}s"
-      exit 1
-    fi
-    log "[$elapsed/${TIMEOUT}s] VM running..."
-  done
+    # Inject desktop files only
+    virt-customize -a "$SNAPSHOT_IMAGE" \
+      --copy-in ./desktop-environment.sh:/home/debian/delice/ \
+      --copy-in ./.config:/home/debian/delice/ \
+      --copy-in ./wallpapers:/home/debian/delice/ \
+      --copy-in /tmp/run-desktop-only.sh:/usr/local/bin/ \
+      --copy-in /tmp/rc.local:/etc/ \
+      --run-command 'chown -R debian:debian /home/debian/delice' \
+      --run-command 'chmod +x /usr/local/bin/run-desktop-only.sh' \
+      --run-command 'chmod +x /etc/rc.local' || { error "Failed to customize VM image"; exit 1; }
 
-  log "VM stopped. Extracting logs..."
-  virt-cat -a "$SNAPSHOT_IMAGE" /var/log/test-output.log > "$LOG_FILE" 2>/dev/null
+    log "Starting backup VM for desktop script"
+    sudo virsh --connect qemu:///system start "$VM_NAME" || { error "Failed to start VM"; exit 1; }
 
-  echo ""
-  cat "$LOG_FILE"
-  echo ""
+    monitorVMCompletion "$VM_NAME" "$TIMEOUT" "Desktop" || exit 1
 
-  grep -q "TEST_COMPLETE" "$LOG_FILE" && log "Test completed successfully!" || { error "Test failed or did not complete"; exit 1; }
+    log "Desktop complete. Extracting logs..."
+    virt-cat -a "$SNAPSHOT_IMAGE" /var/log/test-output.log > "$DESKTOP_LOG" 2>/dev/null
+
+    showLogSummary "$DESKTOP_LOG" "Desktop"
+
+    grep -q "TEST_COMPLETE" "$DESKTOP_LOG" && log "Test completed successfully!" || { error "Test failed or did not complete"; exit 1; }
+
+    return
+  }
+
+  isPostOnlyRun && {
+    log "Running post-install only"
+
+    # Create the run script for POST-INSTALL ONLY
+    cat > /tmp/run-post-only.sh <<POSTSCRIPT
+#!/bin/bash
+export HOME=/home/debian
+
+$(waitForNetwork)
+
+cd /home/debian/delice
+./post-install.sh 2>&1 | tee -a /var/log/test-output.log
+echo "TEST_COMPLETE" >> /var/log/test-output.log
+poweroff
+POSTSCRIPT
+    chmod +x /tmp/run-post-only.sh
+
+    createRcLocal "run-post-only.sh" /tmp/rc.local
+
+    # Inject post-install files only
+    virt-customize -a "$SNAPSHOT_IMAGE" \
+      --mkdir /home/debian/delice \
+      --copy-in ./post-install.sh:/home/debian/delice/ \
+      --copy-in ./sources.list:/home/debian/delice/ \
+      --copy-in ./dotfiles:/home/debian/delice/ \
+      --copy-in /tmp/run-post-only.sh:/usr/local/bin/ \
+      --copy-in /tmp/rc.local:/etc/ \
+      --run-command 'chown -R debian:debian /home/debian/delice' \
+      --run-command 'chmod +x /usr/local/bin/run-post-only.sh' \
+      --run-command 'chmod +x /etc/rc.local' || { error "Failed to customize VM image"; exit 1; }
+
+    log "Starting VM for post-install"
+    sudo virsh --connect qemu:///system start "$VM_NAME" || { error "Failed to start VM"; exit 1; }
+
+    monitorVMCompletion "$VM_NAME" "$TIMEOUT" "Post-install" || exit 1
+
+    log "Post-install complete. Extracting logs..."
+    virt-cat -a "$SNAPSHOT_IMAGE" /var/log/test-output.log > "$POST_INSTALL_LOG" 2>/dev/null
+
+    showLogSummary "$POST_INSTALL_LOG" "Post-install"
+
+    grep -q "TEST_COMPLETE" "$POST_INSTALL_LOG" && log "Test completed successfully!" || { error "Test failed or did not complete"; exit 1; }
+
+    return
+  }
+
+  error "Unknown execution path"
+  exit 1
 }
 
 main "$@"
