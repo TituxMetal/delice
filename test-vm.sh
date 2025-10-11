@@ -123,12 +123,8 @@ isDesktopTest() {
   [[ "$SCRIPT_TO_TEST" == "desktop" ]]
 }
 
-hasBackup() {
-  backupExists
-}
-
 useBackupSource() {
-  isDesktopTest && hasBackup
+  isDesktopTest && backupExists
 }
 
 getCloneSource() {
@@ -138,8 +134,6 @@ getCloneSource() {
 isBackupSource() {
   [[ "$1" == "$POST_INSTALL_BACKUP_NAME" ]]
 }
-
-
 
 runDesktopOnBackup() {
   local desktop_vm_name="test-desktop-$(date +%s)"
@@ -207,11 +201,7 @@ DESKTOPSCRIPT
 }
 
 needsBackupCreation() {
-  isDesktopTest && ! hasBackup
-}
-
-shouldCreateBackup() {
-  needsBackupCreation
+  isDesktopTest && ! backupExists
 }
 
 createPostInstallBackup() {
@@ -267,11 +257,11 @@ cleanup() {
 }
 
 isFirstDesktopRun() {
-  isDesktopTest && ! hasBackup
+  needsBackupCreation
 }
 
 isBackupDesktopRun() {
-  isDesktopTest && hasBackup
+  useBackupSource
 }
 
 isPostOnlyRun() {
@@ -302,7 +292,7 @@ main() {
   log "Injecting scripts into disk image"
   sleep 3
 
-  isFirstDesktopRun && {
+  if isFirstDesktopRun; then
     log "First desktop run: post-install → backup → desktop"
 
     # Create the run script for POST-INSTALL ONLY
@@ -349,9 +339,9 @@ POSTSCRIPT
     runDesktopOnBackup
 
     return
-  }
+  fi
 
-  isBackupDesktopRun && {
+  if isBackupDesktopRun; then
     log "Using existing backup for desktop-only run"
 
     # Create the run script for DESKTOP ONLY
@@ -397,9 +387,9 @@ DESKTOPSCRIPT
     grep -q "TEST_COMPLETE" "$DESKTOP_LOG" && log "Test completed successfully!" || { error "Test failed or did not complete"; exit 1; }
 
     return
-  }
+  fi
 
-  isPostOnlyRun && {
+  if isPostOnlyRun; then
     log "Running post-install only"
 
     # Create the run script for POST-INSTALL ONLY
@@ -443,7 +433,7 @@ POSTSCRIPT
     grep -q "TEST_COMPLETE" "$POST_INSTALL_LOG" && log "Test completed successfully!" || { error "Test failed or did not complete"; exit 1; }
 
     return
-  }
+  fi
 
   error "Unknown execution path"
   exit 1
