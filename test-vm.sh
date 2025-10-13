@@ -368,7 +368,7 @@ echo "Starting desktop-only test..." > /var/log/test-output.log
 $(waitForNetwork)
 
 cd /home/debian/delice
-./desktop-environment.sh 2>&1 | tee -a /var/log/test-output.log
+./desktop-environment.sh --as-root --no-prompts --theme 2>&1 | tee -a /var/log/test-output.log
 echo "TEST_COMPLETE" >> /var/log/test-output.log
 poweroff
 DESKTOPSCRIPT
