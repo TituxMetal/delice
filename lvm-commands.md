@@ -1,6 +1,6 @@
-# LVM Usefull Commands
+# LVM Useful Commands
 
-## List actual phisical volumes
+## List actual physical volumes
 
 ```
 sudo pvs
