@@ -61,7 +61,7 @@ export HOME=/home/debian
 $(waitForNetwork)
 
 cd /home/debian/delice
-./post-install.sh 2>&1 | tee -a /var/log/test-output.log
+./post-install.sh --as-root 2>&1 | tee -a /var/log/test-output.log
 echo "TEST_COMPLETE" >> /var/log/test-output.log
 poweroff
 POSTSCRIPT
@@ -78,6 +78,7 @@ injectPostInstallFiles() {
     --copy-in ./post-install.sh:/home/debian/delice/ \
     --copy-in ./sources.list:/home/debian/delice/ \
     --copy-in ./dotfiles:/home/debian/delice/ \
+    --copy-in ./lib:/home/debian/delice/ \
     --copy-in "$script_path":/usr/local/bin/ \
     --copy-in /tmp/rc.local:/etc/ \
     --run-command 'chown -R debian:debian /home/debian/delice' \
@@ -196,7 +197,7 @@ echo "Starting desktop test after post-install backup..." > /var/log/test-output
 $(waitForNetwork)
 
 cd /home/debian/delice
-./desktop-environment.sh 2>&1 | tee -a /var/log/test-output.log
+./desktop-environment.sh --as-root --no-prompts --theme 2>&1 | tee -a /var/log/test-output.log
 echo "TEST_COMPLETE" >> /var/log/test-output.log
 poweroff
 DESKTOPSCRIPT
@@ -206,6 +207,7 @@ DESKTOPSCRIPT
 
   virt-customize -a "$desktop_snapshot" \
     --copy-in ./desktop-environment.sh:/home/debian/delice/ \
+    --copy-in ./lib:/home/debian/delice/ \
     --copy-in ./.config:/home/debian/delice/ \
     --copy-in ./wallpapers:/home/debian/delice/ \
     --copy-in /tmp/run-desktop.sh:/usr/local/bin/ \
