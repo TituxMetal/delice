@@ -1,90 +1,193 @@
 #!/bin/bash
 
-# Run these commands with regular user
+# Name: post-install.sh
+# Description: Base system configuration for Debian 13 (Trixie) — packages, services, firewall, zram, dotfiles.
+# Author: Titux Metal <tituxmetal[at]lgdweb[dot]fr>
+# Url: https://github.com/TituxMetal/delice
+# License: MIT License
+# Target: Debian 13 (Trixie)
 
-printMessage() {
-  message=$1
-  tput setaf 2
-  echo "-------------------------------------------"
-  echo "$message"
-  echo "-------------------------------------------"
-  tput sgr0
+readonly scriptDir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly projectRoot="${scriptDir}"
+
+# shellcheck source=lib/common.sh
+source "${scriptDir}/lib/common.sh"
+
+# =============================================================================
+# SCRIPT CONFIGURATION
+# =============================================================================
+
+dryRun=0
+enableRunAsRoot=0
+
+# =============================================================================
+# PACKAGE LISTS
+# =============================================================================
+
+systemPackages="vim htop git bash-completion rsync curl wget chrony modemmanager ufw iwd bind9-dnsutils libnss-mdns avahi-daemon"
+developmentPackages="build-essential libpam0g-dev libxcb-xkb-dev"
+filesystemPackages="fdisk mtools xfsprogs dosfstools zip unzip unrar p7zip-full f2fs-tools exfatprogs gpart udftools"
+monitoringPackages="netselect-apt lynis duf lm-sensors systemd-zram-generator"
+
+enabledServices="chrony ssh avahi-daemon fstrim.timer ufw iwd ModemManager"
+
+# =============================================================================
+# COMMAND LINE PARSING
+# =============================================================================
+
+showHelp() {
+  cat <<'EOF'
+Usage: post-install.sh [options]
+
+Options:
+  --as-root     Run script as root user (not recommended, ONLY for testing)
+  --dry-run     Show planned actions without executing
+  -h, --help    Display this help message
+EOF
 }
 
-# Helper function to handle errors
-handleError() {
-  clear
-  set -uo pipefail
-  trap 's=$?; echo "$0: Error on line "$LINENO": $BASH_COMMAND"; exit $s' ERR
+parseArgs() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --as-root)
+        enableRunAsRoot=1
+        logWarning "Running as root is not recommended. Proceeding for testing purposes."
+        ;;
+      --dry-run)
+        dryRun=1
+        ;;
+      -h|--help)
+        showHelp
+        exit 0
+        ;;
+      *)
+        logError "Unknown option: $1"
+        exit 1
+        ;;
+    esac
+    shift
+  done
 }
 
-main() {
-  handleError
+# =============================================================================
+# INSTALLATION FUNCTIONS
+# =============================================================================
 
-  # Make a backup of sources.list file
+updateSourcesList() {
+  printMessage "Updating APT sources to Trixie"
   sudo cp -v /etc/apt/sources.list /etc/apt/sources.list.bak
+  sudo cp -v "${projectRoot}/sources.list" /etc/apt/sources.list
+}
 
-  # Add the new sources.list file
-  sudo cp -v sources.list /etc/apt/sources.list
+upgradeSystem() {
+  printMessage "Running full system upgrade"
+  sudo apt update && sudo apt upgrade -y && sudo apt dist-upgrade -y
+}
 
-  # Make a full system upgrade
-  sudo apt update && sudo apt upgrade && sudo apt dist-upgrade
+installPackages() {
+  printMessage "Installing base packages"
+  sudo apt install -y $systemPackages $developmentPackages $filesystemPackages $monitoringPackages
+}
 
-  # Run this script as regular user
-  sudo apt install -y vim htop git bash-completion rsync curl wget chrony modemmanager ufw iwd bind9-dnsutils libnss-mdns avahi-daemon \
-    build-essential libpam0g-dev libxcb-xkb-dev fdisk mtools xfsprogs dosfstools zip unzip unrar p7zip-full f2fs-tools exfatprogs \
-    gpart udftools netselect-apt lynis duf lm-sensors systemd-zram-generator
+enableServices() {
+  printMessage "Enabling system services"
+  sudo systemctl enable $enabledServices
+}
 
-  sudo systemctl enable chrony ssh avahi-daemon fstrim.timer ufw iwd ModemManager
-
-  # Setup time
+configureTimezone() {
+  printMessage "Configuring timezone and NTP"
   sudo timedatectl set-timezone Europe/Paris --adjust-system-clock
   sudo timedatectl set-ntp yes
+}
 
-  # Setup Ufw firewall
-  sudo ufw default deny incoming && sudo ufw allow ssh && sudo ufw default allow outgoing
+configureFirewall() {
+  printMessage "Configuring UFW firewall"
+  sudo ufw default deny incoming
+  sudo ufw limit ssh
+  sudo ufw default allow outgoing
+}
 
-  # Install and setup Ly display manager
-  # git clone --recurse-submodules https://github.com/fairyglade/ly && cd ly
-  # make && make install installsystemd
-
-  # systemctl enable ly.service && systemctl disable getty@tty2.service
-
-  # Zram configuration
-  sudo bash -c 'cat > "/etc/systemd/zram-generator.conf"' << EOF
+configureZram() {
+  printMessage "Configuring zram swap"
+  sudo tee /etc/systemd/zram-generator.conf >/dev/null <<'ZRAMEOF'
 [zram0]
 zram-size = ram / 2
 compression-algorithm = zstd
 swap-priority = 100
 fs-type = swap
-EOF
+ZRAMEOF
 
   sudo mkdir -pv /etc/sysctl.d
 
-  # Add zram parameters
-  sudo bash -c 'cat > "/etc/sysctl.d/99-vm-zram-parameters.conf"' << EOF
+  sudo tee /etc/sysctl.d/99-vm-zram-parameters.conf >/dev/null <<'SYSCTLEOF'
 vm.swappiness = 180
 vm.watermark_boost_factor = 0
 vm.watermark_scale_factor = 125
 vm.page-cluster = 0
-EOF
+SYSCTLEOF
 
-  # Reload systemd daemon
   sudo systemctl daemon-reload
-  # Start zram
   sudo systemctl start /dev/zram0
-  # Check zram is enabled
   sudo zramctl
-
-  # Add dot files to regular user
-  cp -v dotfiles/.* $HOME/
-  ln -s $HOME/.profile $HOME/.xsessionrc
-
-  # Add dot files to root user
-  sudo -s cp -v dotfiles/root/.* /root/
-
 }
 
-time main
+installDotfiles() {
+  printMessage "Installing dotfiles"
 
-exit 0
+  local dotfile
+  for dotfile in "${projectRoot}"/dotfiles/.bash_profile "${projectRoot}"/dotfiles/.bashrc "${projectRoot}"/dotfiles/.colorrc "${projectRoot}"/dotfiles/.profile; do
+    if [[ -f "$dotfile" ]]; then
+      cp -v "$dotfile" "$HOME/"
+    fi
+  done
+
+  ln -sf "$HOME/.profile" "$HOME/.xsessionrc"
+
+  printMessage "Installing root dotfiles"
+  local rootDotfile
+  for rootDotfile in "${projectRoot}"/dotfiles/root/.bash_profile "${projectRoot}"/dotfiles/root/.bashrc "${projectRoot}"/dotfiles/root/.colorrc "${projectRoot}"/dotfiles/root/.profile; do
+    if [[ -f "$rootDotfile" ]]; then
+      sudo cp -v "$rootDotfile" /root/
+    fi
+  done
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+main() {
+  setupErrorHandling
+  parseArgs "$@"
+  requireUserContext
+
+  if [[ $dryRun -eq 1 ]]; then
+    printMessage "Dry run — planned actions"
+    echo "- Update sources.list to Trixie"
+    echo "- Full system upgrade"
+    echo "- Install: $systemPackages"
+    echo "- Install: $developmentPackages"
+    echo "- Install: $filesystemPackages"
+    echo "- Install: $monitoringPackages"
+    echo "- Enable services: $enabledServices"
+    echo "- Configure timezone: Europe/Paris"
+    echo "- Configure firewall: deny incoming, limit ssh, allow outgoing"
+    echo "- Configure zram swap"
+    echo "- Install dotfiles"
+    logWarning "Dry run enabled; no changes made."
+    return
+  fi
+
+  updateSourcesList
+  upgradeSystem
+  installPackages
+  enableServices
+  configureTimezone
+  configureFirewall
+  configureZram
+  installDotfiles
+
+  printMessage "Post-install setup complete."
+}
+
+time main "$@"
