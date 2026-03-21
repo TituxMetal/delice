@@ -12,23 +12,23 @@
 readonly scriptDir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly projectRoot="${scriptDir}"
 
-# Video Driver Packages
-declare -a videoDriverPackages
-# Video drivers Nvidia See: https://wiki.debian.org/NvidiaGraphicsDrivers
+# shellcheck source=lib/common.sh
+source "${scriptDir}/lib/common.sh"
+
+# =============================================================================
+# PACKAGE LISTS
+# =============================================================================
+
+# Video drivers — See: https://wiki.debian.org/NvidiaGraphicsDrivers
 nvidiaDriverPackages="xserver-xorg-video-nouveau nvidia-vaapi-driver"
-# Video drivers Intel See: https://wiki.debian.org/GraphicsCard#Intel
+# Video drivers Intel — See: https://wiki.debian.org/GraphicsCard#Intel
 intelDriverPackages="libva2 intel-media-va-driver xserver-xorg-video-intel"
-# Virtual Machine (kvm) video drivers See: https://wiki.debian.org/KVM
+# Virtual Machine (kvm) video drivers — See: https://wiki.debian.org/KVM
 virtualMachineDriverPackages="spice-vdagent xserver-xorg-video-qxl xserver-xorg-video-vesa"
-# Video drivers OpenGL See: https://wiki.debian.org/GraphicsCard
-genericDriverPackages="mesa-utils xserver-xorg-video-vesa"
-# Hardware Video accel See: https://wiki.debian.org/HardwareVideoAcceleration
+# Hardware Video accel — See: https://wiki.debian.org/HardwareVideoAcceleration
 hdwVideoAccelPackages="mesa-va-drivers mesa-vdpau-drivers vainfo vdpauinfo"
 
-declare -a desktopEnvPackages
-checkInstallDesktopXfce=0
-desktopEnvironment=""
-# Xfce desktop environment See: https://wiki.debian.org/Xfce
+# Xfce desktop environment — See: https://wiki.debian.org/Xfce
 desktopXfcePackages="task-xfce-desktop accountsservice slick-greeter"
 
 # Base X.Org and system packages
@@ -39,17 +39,12 @@ baseXorgPackages="xbindkeys xdg-utils xdg-user-dirs xdg-user-dirs-gtk xcompmgr n
 browserPackages="firefox-esr firefox-esr-l10n-fr"
 
 # System utilities
-utilityPackages="fastfetch alacritty rofi pcmanfm libfm-tools libusbmuxd-tools feh dex xarchiver gparted gphoto2 sshfs nfs-common fuseiso file-roller timeshift gvfs gvfs-backends gvfs-fuse dunst libnotify-bin figlet qimgv redshift cpu-x cryptsetup pavucontrol alsa-utils pulseaudio ffmpeg ffmpegthumbnailer rsync"
+utilityPackages="fastfetch alacritty rofi pcmanfm libfm-tools libusbmuxd-tools feh dex xarchiver gparted gphoto2 sshfs nfs-common fuseiso file-roller timeshift gvfs gvfs-backends gvfs-fuse dunst libnotify-bin figlet qimgv redshift cpu-x cryptsetup pavucontrol alsa-utils pulseaudio ffmpeg ffmpegthumbnailer rsync seahorse gnupg"
 
 # Fonts and themes See: https://wiki.debian.org/Fonts
 themePackages="lxappearance fonts-recommended fonts-ubuntu fonts-font-awesome fonts-lmodern fonts-terminus papirus-icon-theme gtk-update-icon-cache arc-theme adwaita-qt qt5-style-kvantum"
 
-# Multimedia packages: readers/viewers, editors/capture, rip/encode, burn for images, audio, video
-declare -a multimediaPackages
-checkInstallMultimediaReaders=0
-checkInstallMultimediaEditors=0
-checkInstallMultimediaRipencode=0
-checkInstallMultimediaBurn=0
+# Multimedia packages: readers/viewers, editors/capture, rip/encode, burn
 multimediaReadersPackages="vlc quodlibet shotwell evince mpd playerctl libdvd-pkg libdvdread-dev libdvdnav-dev libcdio-dev"
 multimediaEditorsPackages="gimp inkscape scour"
 multimediaRipencodePackages="asunder handbrake handbrake-cli lame ogmtools faac flac x265 x264"
@@ -57,15 +52,12 @@ multimediaBurnPackages="brasero dvdauthor dvdbackup dvd+rw-tools libisoburn-dev"
 # Audio/Video codec and GStreamer support
 audioVideoCodecGst="gstreamer1.0-x gstreamer1.0-libav"
 
-officePackages="seahorse gnupg ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreoffice-help-fr galculator l3afpad ghostwriter libtext-multimarkdown-perl cmark pandoc"
+officePackages="ghostscript libreoffice-gtk3 libreoffice-l10n-fr libreoffice-help-fr galculator l3afpad ghostwriter libtext-multimarkdown-perl cmark pandoc"
 
 # Development Packages
-declare -a developmentPackages
-checkInstallDevelopmentToolchain=0
 developmentToolchainPackages="build-essential"
 
 bluetoothPackages="bluez bluez-firmware bluez-tools pulseaudio-module-bluetooth blueman"
-checkInstallBluetooth=0
 
 # =============================================================================
 # SCRIPT CONFIGURATION VARIABLES
@@ -100,52 +92,8 @@ declare -a postInstallTasks=()          # Tasks to execute after package install
 declare -a summaryLines=()              # Summary information for user review
 
 # =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
-# Display formatted message with green color and borders
-# Usage: printMessage "Your message here"
-printMessage() {
-  local message=$1
-  if command -v tput >/dev/null 2>&1; then
-    tput setaf 2
-  fi
-  echo "-------------------------------------------"
-  echo "$message"
-  echo "-------------------------------------------"
-  if command -v tput >/dev/null 2>&1; then
-    tput sgr0
-  fi
-}
-
-# Log warning message to stderr
-# Usage: logWarning "Warning message"
-logWarning() {
-  local message=$1
-  echo "WARNING: $message" >&2
-}
-
-# Log error message to stderr
-# Usage: logError "Error message"
-logError() {
-  local message=$1
-  echo "ERROR: $message" >&2
-}
-
-# =============================================================================
 # ARRAY MANIPULATION FUNCTIONS
 # =============================================================================
-
-# Append multiple items to an array
-# Usage: appendPackages arrayName "item1" "item2" "item3"
-appendPackages() {
-  local -n target=$1
-  shift
-  local item
-  for item in "$@"; do
-    target+=("$item")
-  done
-}
 
 # Add item to array only if it doesn't already exist
 # Usage: addUnique arrayName "itemValue"
@@ -175,29 +123,6 @@ deduplicateArray() {
     fi
   done
   target=("${unique[@]}")
-}
-
-# =============================================================================
-# ERROR HANDLING AND VALIDATION
-# =============================================================================
-
-# Enable strict error handling with detailed error reporting
-# Sets up trap to show exact line and command that failed
-setupErrorHandling() {
-  set -euo pipefail
-  trap 'status=$?; echo "Error on line ${LINENO}: ${BASH_COMMAND}" >&2; exit $status' ERR
-}
-
-# Ensure script is not run as root user
-# The script needs to run as regular user with sudo privileges for proper file ownership
-requireUserContext() {
-  if [[ $enableRunAsRoot -eq 1 ]]; then
-    return
-  fi
-  if [[ $EUID -eq 0 ]]; then
-    logError "Run this script as a regular user with sudo access."
-    exit 1
-  fi
 }
 
 # =============================================================================
