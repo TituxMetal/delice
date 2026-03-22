@@ -5,7 +5,7 @@
 #  dash ~/.profile
 #==============================================================================
 
-source ~/.colorrc
+. ~/.colorrc
 
 # Modify this file to reflect your specific requirements
 
@@ -15,11 +15,8 @@ export VISUAL=vim
 
 export PATH="${HOME}/bin:${HOME}/.local/bin:${PATH}"
 
-# enable qt5ct config
-export QT_QPA_PLATFORMTHEME=qt5ct
-
-# determine network interface
-export NET=$(ip route get 2.2.2.2 | awk -- '{printf $5}')
+# enable Kvantum theme engine for Qt apps
+export QT_QPA_PLATFORMTHEME=kvantum
 
 export PS1="${BBlue}\u@\h: ${BCyan}\w${BPurple}\$(parseGitBranch) ${Yellow}\$(date +%H:%M:%S)\n${BCyan}\\$ ${NC}"
 
