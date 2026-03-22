@@ -70,6 +70,8 @@ installTheme=0                 # Flag to install theme packages and sync dotfile
 installOffice=0                # Flag to install office suite packages
 enableBluetooth=0              # Flag to install and enable Bluetooth support
 needDvdReconfigure=0           # Flag to reconfigure DVD CSS support
+backupConfigs=0                # Flag to backup user configs before installing
+skipBackup=0                   # Flag to skip backup prompt for existing installations
 enableRunAsRoot=0              # Flag to allow running script as root (not recommended)
 
 # Default selections
@@ -83,6 +85,7 @@ officeCliOverride=0            # Skip office suite prompt
 multimediaCliOverride=0        # Skip multimedia selection prompt
 developmentCliOverride=0       # Skip development tools prompt
 bluetoothCliOverride=0         # Skip Bluetooth support prompt
+backupCliOverride=0            # Skip backup prompt
 
 # Dynamic arrays populated during execution
 declare -a selectedMultimediaGroups=()  # User-selected multimedia groups
@@ -126,6 +129,58 @@ deduplicateArray() {
 }
 
 # =============================================================================
+# BACKUP FUNCTIONS
+# =============================================================================
+
+# Detect if a desktop environment is already installed
+# Returns 0 if ~/.config/xfce4/ exists (existing install), 1 otherwise
+detectExistingInstall() {
+  [[ -d "$HOME/.config/xfce4" ]]
+}
+
+# Backup user configuration directories before re-provisioning
+# Creates ~/delice-backup-YYYYMMDD/ and rsyncs existing user configs into it
+backupUserConfigs() {
+  local backupDir="$HOME/delice-backup-$(date +%Y%m%d)"
+  local dirsToBackup=(
+    "$HOME/.mozilla"
+    "$HOME/.config/google-chrome"
+    "$HOME/.config/BraveSoftware"
+    "$HOME/.config/libreoffice"
+    "$HOME/.local/share/keyrings"
+    "$HOME/.ssh"
+    "$HOME/.thunderbird"
+  )
+
+  local existingDirs=()
+  local dir
+  for dir in "${dirsToBackup[@]}"; do
+    if [[ -d "$dir" ]]; then
+      existingDirs+=("$dir")
+    fi
+  done
+
+  if [[ ${#existingDirs[@]} -eq 0 ]]; then
+    logWarning "No user config directories found to backup."
+    return
+  fi
+
+  printMessage "Estimating backup size"
+  du -sh "${existingDirs[@]}"
+
+  printMessage "Backing up user configs to ${backupDir}"
+  mkdir -p "$backupDir"
+
+  for dir in "${existingDirs[@]}"; do
+    local relative="${dir#"$HOME"/}"
+    mkdir -p "$backupDir/$(dirname "$relative")"
+    rsync -av "$dir/" "$backupDir/$relative/"
+  done
+
+  printMessage "Backup complete: ${backupDir}"
+}
+
+# =============================================================================
 # COMMAND LINE PARSING FUNCTIONS
 # =============================================================================
 
@@ -164,6 +219,8 @@ Usage: desktop-environment.sh [options]
 
 Options:
   --no-prompts                 Disable interactive prompts (use defaults or CLI selections)
+  --backup-configs             Backup user configs before installing
+  --skip-backup                Skip backup prompt for existing installations
   --theme                      Install theme packages and sync dotfiles
   --desktop=<name>             Desktop profile to install (default: xfce)
   --drivers=<profile>          Driver profile: vm, intel, nvidia, none (default: vm)
@@ -202,6 +259,14 @@ parseArgs() {
     case "$1" in
       --no-prompts)
         promptMode="disabled"
+      ;;
+      --backup-configs)
+        backupConfigs=1
+        backupCliOverride=1
+      ;;
+      --skip-backup)
+        skipBackup=1
+        backupCliOverride=1
       ;;
       --theme)
         installTheme=1
@@ -412,10 +477,22 @@ promptBluetoothSupport() {
   askYesNo "Install Bluetooth support? [y/N]" enableBluetooth "n"
 }
 
+promptBackupConfigs() {
+  if [[ $backupCliOverride -eq 1 ]]; then
+    return
+  fi
+  if ! detectExistingInstall; then
+    return
+  fi
+  logWarning "Existing desktop installation detected."
+  askYesNo "Backup user configs before proceeding? [Y/n]" backupConfigs "y"
+}
+
 maybePromptUser() {
   if [[ "$promptMode" == "disabled" ]]; then
     return
   fi
+  promptBackupConfigs
   promptDriverProfile
   promptThemeOption
   promptMultimediaGroups
@@ -639,9 +716,16 @@ EOF
 installThemeAssets() {
   printMessage "Syncing theme and desktop configuration"
   mkdir -p "$HOME/.config"
-  if [[ -d "${projectRoot}/.config" ]]; then
-    rsync -rtv --delete "${projectRoot}/.config/" "$HOME/.config/"
-  fi
+
+  local managedConfigDirs=(alacritty fastfetch galculator gtk-2.0 gtk-3.0 htop l3afpad pcmanfm rofi xfce4)
+  local dir
+  for dir in "${managedConfigDirs[@]}"; do
+    if [[ -d "${projectRoot}/.config/${dir}" ]]; then
+      mkdir -p "$HOME/.config/${dir}"
+      rsync -rtv --delete "${projectRoot}/.config/${dir}/" "$HOME/.config/${dir}/"
+    fi
+  done
+
   if [[ -d "${projectRoot}/wallpapers" ]]; then
     mkdir -p "$HOME/wallpapers"
     rsync -rtv --delete "${projectRoot}/wallpapers/" "$HOME/wallpapers/"
@@ -688,6 +772,9 @@ main() {
   maybePromptUser
   normalizeMultimediaSelection
   validateConfiguration
+  if [[ $backupConfigs -eq 1 && $skipBackup -eq 0 ]]; then
+    backupUserConfigs
+  fi
   buildPackagePlan
   printSummary
   if [[ $dryRun -eq 1 ]]; then
