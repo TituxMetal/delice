@@ -77,6 +77,7 @@ enableRunAsRoot=0              # Flag to allow running script as root (not recom
 # Default selections
 selectedDriverProfile="vm"      # Default video driver profile (vm, intel, nvidia, none)
 selectedDesktop="xfce"         # Default desktop environment
+defaultWallpaper="rod-long-8i7F4BadwNo-unsplash.jpg"  # Default wallpaper from wallpapers/
 
 # CLI override flags - prevent prompts when set via command line
 driverCliOverride=0            # Skip driver selection prompt
@@ -730,6 +731,21 @@ installThemeAssets() {
     mkdir -p "$HOME/wallpapers"
     rsync -rtv --delete "${projectRoot}/wallpapers/" "$HOME/wallpapers/"
   fi
+
+  configureWallpaper
+}
+
+# Resolve wallpaper placeholder in XFCE desktop configuration
+# Replaces DELICE_WALLPAPER with actual path to user's wallpaper
+configureWallpaper() {
+  local desktopXml="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+  if [[ ! -f "$desktopXml" ]]; then
+    logWarning "xfce4-desktop.xml not found, skipping wallpaper configuration."
+    return
+  fi
+  local wallpaperPath="$HOME/wallpapers/${defaultWallpaper}"
+  printMessage "Configuring wallpaper: ${defaultWallpaper}"
+  sed -i "s|DELICE_WALLPAPER|${wallpaperPath}|g" "$desktopXml"
 }
 
 # Configure DVD CSS decryption support
