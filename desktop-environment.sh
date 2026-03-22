@@ -76,6 +76,10 @@ backupConfigs=0                # Flag to backup user configs before installing
 skipBackup=0                   # Flag to skip backup prompt for existing installations
 installBrave=0                 # Flag to install Brave browser
 migrateChrome=0                # Flag to migrate Chrome data to Brave
+installRustdesk=0              # Flag to install Rustdesk remote access
+rustdeskServer="laura.lgdweb.ovh"   # Rustdesk server ID and relay address
+rustdeskKey="QrrSBjpl1L1nbJNqjCkNfrKsSOSxYappCZavaPp1db8="  # Rustdesk server public key
+rustdeskPassword=""            # Rustdesk permanent password (set via CLI)
 enableRunAsRoot=0              # Flag to allow running script as root (not recommended)
 
 # Default selections
@@ -93,6 +97,7 @@ bluetoothCliOverride=0         # Skip Bluetooth support prompt
 backupCliOverride=0            # Skip backup prompt
 braveCliOverride=0             # Skip Brave browser prompt
 migrateCliOverride=0           # Skip Chrome migration prompt
+rustdeskCliOverride=0          # Skip Rustdesk prompt
 
 # Dynamic arrays populated during execution
 declare -a selectedMultimediaGroups=()  # User-selected multimedia groups
@@ -233,6 +238,10 @@ Options:
   --drivers=<profile>          Driver profile: vm, intel, nvidia, none (default: vm)
   --with-brave                 Install Brave browser with managed policies
   --migrate-chrome             Migrate Chrome data (bookmarks, history, passwords) to Brave
+  --with-rustdesk              Install Rustdesk remote access
+  --rustdesk-server=HOST       Rustdesk relay server address
+  --rustdesk-key=KEY           Rustdesk server public key
+  --rustdesk-password=PASS     Rustdesk permanent password
   --with-office                Install office suite packages
   --with-multimedia            Install all multimedia groups
   --with-multimedia=<list>     Comma-separated multimedia groups (players,editors,burn,ripencode)
@@ -295,6 +304,19 @@ parseArgs() {
       --migrate-chrome)
         migrateChrome=1
         migrateCliOverride=1
+      ;;
+      --with-rustdesk)
+        installRustdesk=1
+        rustdeskCliOverride=1
+      ;;
+      --rustdesk-server=*)
+        rustdeskServer="${1#*=}"
+      ;;
+      --rustdesk-key=*)
+        rustdeskKey="${1#*=}"
+      ;;
+      --rustdesk-password=*)
+        rustdeskPassword="${1#*=}"
       ;;
       --with-office)
         installOffice=1
@@ -519,6 +541,15 @@ promptChromeMigration() {
   askYesNo "Migrate Chrome data (bookmarks, history, passwords) to Brave? [y/N]" migrateChrome "n"
 }
 
+# Prompt user about Rustdesk remote access installation
+# Skipped if Rustdesk flag was specified via command line (--with-rustdesk)
+promptRustdeskInstall() {
+  if [[ $rustdeskCliOverride -eq 1 ]]; then
+    return
+  fi
+  askYesNo "Install Rustdesk remote access? [y/N]" installRustdesk "n"
+}
+
 promptBackupConfigs() {
   if [[ $backupCliOverride -eq 1 ]]; then
     return
@@ -543,6 +574,7 @@ maybePromptUser() {
   promptBluetoothSupport
   promptBraveInstall
   promptChromeMigration
+  promptRustdeskInstall
 }
 
 normalizeMultimediaSelection() {
@@ -716,6 +748,13 @@ buildPackagePlan() {
   fi
   addSummary "$bluetoothSummary"
 
+  local rustdeskSummary="Rustdesk: skipped"
+  if [[ $installRustdesk -eq 1 ]]; then
+    rustdeskSummary="Rustdesk: will download from GitHub"
+    queuePostInstallTask installRustdesk
+  fi
+  addSummary "$rustdeskSummary"
+
   if [[ $needDvdReconfigure -eq 1 ]]; then
     queuePostInstallTask configureDvdcss
   fi
@@ -819,6 +858,51 @@ configureWallpaper() {
   local wallpaperPath="$HOME/wallpapers/${defaultWallpaper}"
   printMessage "Configuring wallpaper: ${defaultWallpaper}"
   sed -i "s|DELICE_WALLPAPER|${wallpaperPath}|g" "$desktopXml"
+}
+
+# Download and install Rustdesk from GitHub releases
+# Configures relay server and permanent password if provided
+installRustdesk() {
+  printMessage "Installing Rustdesk"
+  local tmpDeb
+  tmpDeb=$(mktemp --suffix=.deb)
+
+  # Get latest release .deb URL for amd64
+  local downloadUrl
+  downloadUrl=$(curl -fsSL https://api.github.com/repos/rustdesk/rustdesk/releases/latest \
+    | grep -oP '"browser_download_url":\s*"\K[^"]+amd64\.deb(?=")' \
+    | grep -v sctgdesk \
+    | head -1)
+
+  if [[ -z "$downloadUrl" ]]; then
+    logError "Failed to find Rustdesk .deb download URL"
+    rm -f "$tmpDeb"
+    return 1
+  fi
+
+  printMessage "Downloading Rustdesk from ${downloadUrl}"
+  curl -fsSL -o "$tmpDeb" "$downloadUrl"
+  sudo dpkg -i "$tmpDeb" || sudo apt install -f -y
+  rm -f "$tmpDeb"
+
+  if [[ -n "$rustdeskServer" ]]; then
+    printMessage "Configuring Rustdesk server: ${rustdeskServer}"
+    rustdesk --option custom-rendezvous-server "${rustdeskServer}"
+    rustdesk --option relay-server "${rustdeskServer}"
+  fi
+
+  if [[ -n "$rustdeskKey" ]]; then
+    printMessage "Configuring Rustdesk server key"
+    rustdesk --option key "${rustdeskKey}"
+  fi
+
+  if [[ -n "$rustdeskPassword" ]]; then
+    printMessage "Setting Rustdesk permanent password"
+    rustdesk --password "${rustdeskPassword}"
+  fi
+
+  sudo systemctl enable --now rustdesk
+  printMessage "Rustdesk installed and enabled"
 }
 
 # Run Chrome to Brave data migration script
