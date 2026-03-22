@@ -1,4 +1,3 @@
-#!/bin/sh
 # Make colorcoding available for everyone
 
 Black='\[\e[0;30m\]'    # Black
