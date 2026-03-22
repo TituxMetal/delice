@@ -37,6 +37,7 @@ baseXorgPackages="xbindkeys xdg-utils xdg-user-dirs xdg-user-dirs-gtk xcompmgr n
 
 # Web browser packages
 browserPackages="firefox-esr firefox-esr-l10n-fr"
+bravePackages="brave-browser"
 
 # System utilities
 utilityPackages="fastfetch alacritty rofi pcmanfm libfm-tools libusbmuxd-tools feh dex xarchiver gparted gphoto2 sshfs nfs-common fuseiso file-roller timeshift gvfs gvfs-backends gvfs-fuse dunst libnotify-bin figlet qimgv redshift cpu-x cryptsetup pavucontrol alsa-utils pulseaudio ffmpeg ffmpegthumbnailer rsync seahorse gnupg"
@@ -72,6 +73,7 @@ enableBluetooth=0              # Flag to install and enable Bluetooth support
 needDvdReconfigure=0           # Flag to reconfigure DVD CSS support
 backupConfigs=0                # Flag to backup user configs before installing
 skipBackup=0                   # Flag to skip backup prompt for existing installations
+installBrave=0                 # Flag to install Brave browser
 enableRunAsRoot=0              # Flag to allow running script as root (not recommended)
 
 # Default selections
@@ -87,6 +89,7 @@ multimediaCliOverride=0        # Skip multimedia selection prompt
 developmentCliOverride=0       # Skip development tools prompt
 bluetoothCliOverride=0         # Skip Bluetooth support prompt
 backupCliOverride=0            # Skip backup prompt
+braveCliOverride=0             # Skip Brave browser prompt
 
 # Dynamic arrays populated during execution
 declare -a selectedMultimediaGroups=()  # User-selected multimedia groups
@@ -225,6 +228,7 @@ Options:
   --theme                      Install theme packages and sync dotfiles
   --desktop=<name>             Desktop profile to install (default: xfce)
   --drivers=<profile>          Driver profile: vm, intel, nvidia, none (default: vm)
+  --with-brave                 Install Brave browser with managed policies
   --with-office                Install office suite packages
   --with-multimedia            Install all multimedia groups
   --with-multimedia=<list>     Comma-separated multimedia groups (players,editors,burn,ripencode)
@@ -279,6 +283,10 @@ parseArgs() {
       --drivers=*)
         selectedDriverProfile="${1#*=}"
         driverCliOverride=1
+      ;;
+      --with-brave)
+        installBrave=1
+        braveCliOverride=1
       ;;
       --with-office)
         installOffice=1
@@ -478,6 +486,15 @@ promptBluetoothSupport() {
   askYesNo "Install Bluetooth support? [y/N]" enableBluetooth "n"
 }
 
+# Prompt user about Brave browser installation
+# Skipped if Brave flag was specified via command line (--with-brave)
+promptBraveInstall() {
+  if [[ $braveCliOverride -eq 1 ]]; then
+    return
+  fi
+  askYesNo "Install Brave browser? [y/N]" installBrave "n"
+}
+
 promptBackupConfigs() {
   if [[ $backupCliOverride -eq 1 ]]; then
     return
@@ -500,6 +517,7 @@ maybePromptUser() {
   promptOfficeSuite
   promptDevelopmentGroups
   promptBluetoothSupport
+  promptBraveInstall
 }
 
 normalizeMultimediaSelection() {
@@ -597,6 +615,14 @@ buildPackagePlan() {
   packagesToInstall+=($browserPackages)
   addSummary "Browsers: ${browserPackages}"
 
+  local braveSummary="Brave: skipped"
+  if [[ $installBrave -eq 1 ]]; then
+    packagesToInstall+=($bravePackages)
+    braveSummary="Brave: ${bravePackages}"
+    queuePostInstallTask configureBravePolicies
+  fi
+  addSummary "$braveSummary"
+
   local themeSummary="Themes: skipped"
   if [[ $installTheme -eq 1 ]]; then
     packagesToInstall+=($themePackages)
@@ -681,6 +707,20 @@ printSummary() {
 # INSTALLATION FUNCTIONS
 # =============================================================================
 
+# Add Brave browser APT repository and GPG keyring
+# See: https://brave.com/linux/#debian-ubuntu-mint
+# Idempotent: skips if keyring already exists
+setupBraveRepo() {
+  local keyringPath="/usr/share/keyrings/brave-browser-archive-keyring.gpg"
+  if [[ -f "$keyringPath" ]]; then
+    printMessage "Brave repository already configured, skipping"
+    return
+  fi
+  printMessage "Adding Brave browser APT repository"
+  sudo curl -fsSLo "$keyringPath" https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
+  echo "deb [signed-by=${keyringPath}] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list > /dev/null
+}
+
 # Install all selected packages using APT package manager
 # Updates package index and installs packages non-interactively
 installPackages() {
@@ -748,6 +788,34 @@ configureWallpaper() {
   sed -i "s|DELICE_WALLPAPER|${wallpaperPath}|g" "$desktopXml"
 }
 
+# Deploy Brave browser enterprise policies
+# Copies managed (enforced) and recommended (user-overridable) policy files
+configureBravePolicies() {
+  printMessage "Deploying Brave browser policies"
+  sudo mkdir -p /etc/brave/policies/managed /etc/brave/policies/recommended
+  sudo cp "${projectRoot}/configs/brave-policies-managed.json" /etc/brave/policies/managed/policies.json
+  sudo cp "${projectRoot}/configs/brave-policies-recommended.json" /etc/brave/policies/recommended/policies.json
+  promptChromeUninstall
+}
+
+# Offer to uninstall Google Chrome if detected
+# Only prompts in interactive mode — never auto-removes
+promptChromeUninstall() {
+  if ! dpkg -l google-chrome-stable 2>/dev/null | grep -q "^ii"; then
+    return
+  fi
+  if [[ "$promptMode" == "disabled" ]]; then
+    logWarning "Google Chrome detected. Use 'apt remove google-chrome-stable' to uninstall manually."
+    return
+  fi
+  local removeChrome=0
+  askYesNo "Google Chrome detected. Uninstall it? [y/N]" removeChrome "n"
+  if [[ $removeChrome -eq 1 ]]; then
+    printMessage "Removing Google Chrome"
+    sudo apt remove -y google-chrome-stable
+  fi
+}
+
 # Configure DVD CSS decryption support
 # See: https://wiki.debian.org/DVD
 configureDvdcss() {
@@ -796,6 +864,9 @@ main() {
   if [[ $dryRun -eq 1 ]]; then
     logWarning "Dry run enabled; skipping installation."
     return
+  fi
+  if [[ $installBrave -eq 1 ]]; then
+    setupBraveRepo
   fi
   installPackages
   executePostInstallTasks

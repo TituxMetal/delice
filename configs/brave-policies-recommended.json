@@ -1,0 +1,7 @@
+{
+  "DefaultSearchProviderEnabled": true,
+  "DefaultSearchProviderSearchURL": "https://duckduckgo.com/?q={searchTerms}",
+  "DefaultSearchProviderName": "DuckDuckGo",
+  "BraveShieldsSettingDefault": "standard",
+  "BraveAIChatEnabled": false
+}
