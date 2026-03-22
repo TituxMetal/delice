@@ -38,6 +38,7 @@ baseXorgPackages="xbindkeys xdg-utils xdg-user-dirs xdg-user-dirs-gtk xcompmgr n
 # Web browser packages
 browserPackages="firefox-esr firefox-esr-l10n-fr"
 bravePackages="brave-browser"
+migrationDeps="python3-secretstorage python3-cryptography"
 
 # System utilities
 utilityPackages="fastfetch alacritty rofi pcmanfm libfm-tools libusbmuxd-tools feh dex xarchiver gparted gphoto2 sshfs nfs-common fuseiso file-roller timeshift gvfs gvfs-backends gvfs-fuse dunst libnotify-bin figlet qimgv redshift cpu-x cryptsetup pavucontrol alsa-utils pulseaudio ffmpeg ffmpegthumbnailer rsync seahorse gnupg"
@@ -74,6 +75,7 @@ needDvdReconfigure=0           # Flag to reconfigure DVD CSS support
 backupConfigs=0                # Flag to backup user configs before installing
 skipBackup=0                   # Flag to skip backup prompt for existing installations
 installBrave=0                 # Flag to install Brave browser
+migrateChrome=0                # Flag to migrate Chrome data to Brave
 enableRunAsRoot=0              # Flag to allow running script as root (not recommended)
 
 # Default selections
@@ -90,6 +92,7 @@ developmentCliOverride=0       # Skip development tools prompt
 bluetoothCliOverride=0         # Skip Bluetooth support prompt
 backupCliOverride=0            # Skip backup prompt
 braveCliOverride=0             # Skip Brave browser prompt
+migrateCliOverride=0           # Skip Chrome migration prompt
 
 # Dynamic arrays populated during execution
 declare -a selectedMultimediaGroups=()  # User-selected multimedia groups
@@ -229,6 +232,7 @@ Options:
   --desktop=<name>             Desktop profile to install (default: xfce)
   --drivers=<profile>          Driver profile: vm, intel, nvidia, none (default: vm)
   --with-brave                 Install Brave browser with managed policies
+  --migrate-chrome             Migrate Chrome data (bookmarks, history, passwords) to Brave
   --with-office                Install office suite packages
   --with-multimedia            Install all multimedia groups
   --with-multimedia=<list>     Comma-separated multimedia groups (players,editors,burn,ripencode)
@@ -287,6 +291,10 @@ parseArgs() {
       --with-brave)
         installBrave=1
         braveCliOverride=1
+      ;;
+      --migrate-chrome)
+        migrateChrome=1
+        migrateCliOverride=1
       ;;
       --with-office)
         installOffice=1
@@ -495,6 +503,22 @@ promptBraveInstall() {
   askYesNo "Install Brave browser? [y/N]" installBrave "n"
 }
 
+# Prompt user about Chrome to Brave migration
+# Only prompts if both Chrome and Brave are detected
+# Skipped if migration flag was specified via command line (--migrate-chrome)
+promptChromeMigration() {
+  if [[ $migrateCliOverride -eq 1 ]]; then
+    return
+  fi
+  if ! dpkg -l google-chrome-stable 2>/dev/null | grep -q "^ii"; then
+    return
+  fi
+  if [[ $installBrave -eq 0 ]] && ! dpkg -l brave-browser 2>/dev/null | grep -q "^ii"; then
+    return
+  fi
+  askYesNo "Migrate Chrome data (bookmarks, history, passwords) to Brave? [y/N]" migrateChrome "n"
+}
+
 promptBackupConfigs() {
   if [[ $backupCliOverride -eq 1 ]]; then
     return
@@ -518,6 +542,7 @@ maybePromptUser() {
   promptDevelopmentGroups
   promptBluetoothSupport
   promptBraveInstall
+  promptChromeMigration
 }
 
 normalizeMultimediaSelection() {
@@ -622,6 +647,14 @@ buildPackagePlan() {
     queuePostInstallTask configureBravePolicies
   fi
   addSummary "$braveSummary"
+
+  local migrationSummary="Chrome migration: skipped"
+  if [[ $migrateChrome -eq 1 ]]; then
+    packagesToInstall+=($migrationDeps)
+    migrationSummary="Chrome migration: enabled (deps: ${migrationDeps})"
+    queuePostInstallTask runChromeMigration
+  fi
+  addSummary "$migrationSummary"
 
   local themeSummary="Themes: skipped"
   if [[ $installTheme -eq 1 ]]; then
@@ -786,6 +819,12 @@ configureWallpaper() {
   local wallpaperPath="$HOME/wallpapers/${defaultWallpaper}"
   printMessage "Configuring wallpaper: ${defaultWallpaper}"
   sed -i "s|DELICE_WALLPAPER|${wallpaperPath}|g" "$desktopXml"
+}
+
+# Run Chrome to Brave data migration script
+runChromeMigration() {
+  printMessage "Running Chrome to Brave migration"
+  python3 "${projectRoot}/tools/migrate-chrome-to-brave.py"
 }
 
 # Deploy Brave browser enterprise policies
