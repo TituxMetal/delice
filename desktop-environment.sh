@@ -717,7 +717,7 @@ installThemeAssets() {
   printMessage "Syncing theme and desktop configuration"
   mkdir -p "$HOME/.config"
 
-  local managedConfigDirs=(alacritty fastfetch galculator gtk-2.0 gtk-3.0 htop l3afpad pcmanfm rofi xfce4)
+  local managedConfigDirs=(alacritty fastfetch galculator gtk-2.0 gtk-3.0 htop Kvantum l3afpad pcmanfm rofi xfce4)
   local dir
   for dir in "${managedConfigDirs[@]}"; do
     if [[ -d "${projectRoot}/.config/${dir}" ]]; then
