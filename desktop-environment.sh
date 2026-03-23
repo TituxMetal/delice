@@ -304,6 +304,9 @@ parseArgs() {
       --migrate-chrome)
         migrateChrome=1
         migrateCliOverride=1
+        # Chrome migration requires Brave to be installed
+        installBrave=1
+        braveCliOverride=1
       ;;
       --with-rustdesk)
         installRustdesk=1
@@ -781,16 +784,18 @@ printSummary() {
 
 # Add Brave browser APT repository and GPG keyring
 # See: https://brave.com/linux/#debian-ubuntu-mint
-# Idempotent: skips if keyring already exists
+# Idempotent: skips if both keyring and APT source are correctly configured
 setupBraveRepo() {
   local keyringPath="/usr/share/keyrings/brave-browser-archive-keyring.gpg"
-  if [[ -f "$keyringPath" ]]; then
+  local sourceListPath="/etc/apt/sources.list.d/brave-browser-release.list"
+  if [[ -f "$keyringPath" && -f "$sourceListPath" ]] && \
+     grep -q "https://brave-browser-apt-release.s3.brave.com" "$sourceListPath" 2>/dev/null; then
     printMessage "Brave repository already configured, skipping"
     return
   fi
   printMessage "Adding Brave browser APT repository"
   sudo curl -fsSLo "$keyringPath" https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
-  echo "deb [signed-by=${keyringPath}] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list > /dev/null
+  echo "deb [signed-by=${keyringPath}] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee "$sourceListPath" > /dev/null
 }
 
 # Install all selected packages using APT package manager
