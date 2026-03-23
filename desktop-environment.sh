@@ -867,11 +867,11 @@ installRustdesk() {
   local tmpDeb
   tmpDeb=$(mktemp --suffix=.deb)
 
-  # Get latest release .deb URL for amd64
+  # Get latest release .deb URL for x86_64 (exclude sciter variant)
   local downloadUrl
   downloadUrl=$(curl -fsSL https://api.github.com/repos/rustdesk/rustdesk/releases/latest \
-    | grep -oP '"browser_download_url":\s*"\K[^"]+amd64\.deb(?=")' \
-    | grep -v sctgdesk \
+    | grep -oP '"browser_download_url":\s*"\K[^"]+x86_64\.deb(?=")' \
+    | grep -v sciter \
     | head -1)
 
   if [[ -z "$downloadUrl" ]]; then
@@ -976,6 +976,12 @@ main() {
   setupErrorHandling
   parseArgs "$@"
   requireUserContext
+
+  # Fix HOME when running via sudo (sudo resets HOME to /root)
+  if [[ -n "${SUDO_USER:-}" && "$HOME" == "/root" ]]; then
+    export HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    printMessage "Running as root for user ${SUDO_USER}, using HOME=${HOME}"
+  fi
   maybePromptUser
   normalizeMultimediaSelection
   validateConfiguration
