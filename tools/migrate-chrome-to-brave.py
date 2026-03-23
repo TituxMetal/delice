@@ -234,7 +234,7 @@ def migrate_passwords(chrome_key, brave_key, dry_run=False):
     shutil.copy2(src, tmp.name)
     conn = sqlite3.connect(tmp.name)
     rows = conn.execute(
-      "SELECT origin_url, action_url, username_value, password_value FROM logins"
+      "SELECT origin_url, action_url, username_value, password_value, signon_realm FROM logins"
     ).fetchall()
     conn.close()
 
@@ -242,7 +242,7 @@ def migrate_passwords(chrome_key, brave_key, dry_run=False):
   skipped = 0
 
   if dry_run:
-    for origin_url, action_url, username, encrypted_pw in rows:
+    for origin_url, action_url, username, encrypted_pw, signon_realm in rows:
       decrypted = decrypt_password(encrypted_pw, chrome_key)
       if decrypted:
         migrated += 1
@@ -257,10 +257,11 @@ def migrate_passwords(chrome_key, brave_key, dry_run=False):
     tmp_path = tmp.name
     shutil.copy2(dst, tmp_path)
 
+  conn = None
   try:
     conn = sqlite3.connect(tmp_path)
 
-    for origin_url, action_url, username, encrypted_pw in rows:
+    for origin_url, action_url, username, encrypted_pw, signon_realm in rows:
       decrypted = decrypt_password(encrypted_pw, chrome_key)
       if not decrypted:
         skipped += 1
@@ -280,8 +281,9 @@ def migrate_passwords(chrome_key, brave_key, dry_run=False):
 
       conn.execute(
         "INSERT INTO logins (origin_url, action_url, username_value, password_value, "
-        "date_created, blacklisted_by_user, scheme) VALUES (?, ?, ?, ?, ?, 0, 0)",
-        (origin_url, action_url, username, re_encrypted, 0)
+        "signon_realm, date_created, blacklisted_by_user, scheme) "
+        "VALUES (?, ?, ?, ?, ?, 0, 0, 0)",
+        (origin_url, action_url, username, re_encrypted, signon_realm)
       )
       migrated += 1
 
@@ -293,7 +295,8 @@ def migrate_passwords(chrome_key, brave_key, dry_run=False):
     print(f"Migrated {migrated} passwords ({skipped} skipped/duplicates)")
 
   except Exception as e:
-    conn.close()
+    if conn:
+      conn.close()
     os.unlink(tmp_path)
     print(f"Error migrating passwords: {e}")
     return 0
