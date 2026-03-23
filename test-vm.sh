@@ -1,22 +1,20 @@
 #!/bin/bash
 set -uo pipefail
 
+readonly VIRT_DIR="${VIRT_MANAGER_DIR:-/home/${USER}/virt-manager}"
 readonly BASE_VM_NAME="debian-stable-base"
 readonly VM_NAME="test-postinstall-$(date +%s)"
-readonly SNAPSHOT_IMAGE="/home/titux/virt-manager/snapshot/${VM_NAME}.qcow2"
+readonly SNAPSHOT_IMAGE="${VIRT_DIR}/snapshot/${VM_NAME}.qcow2"
 readonly LOG_TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 readonly POST_INSTALL_LOG="./test-post-install-${LOG_TIMESTAMP}.log"
 readonly DESKTOP_LOG="./test-desktop-${LOG_TIMESTAMP}.log"
-readonly MEMORY="2048"
-readonly VCPUS="2"
 readonly TIMEOUT=600
 
 readonly POST_INSTALL_BACKUP_NAME="debian-post-install-backup"
-readonly POST_INSTALL_BACKUP_DISK="/home/titux/virt-manager/disk/debian-post-install-backup.qcow2"
+readonly POST_INSTALL_BACKUP_DISK="${VIRT_DIR}/disk/debian-post-install-backup.qcow2"
 
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
 readonly NC='\033[0m'
 
 SCRIPT_TO_TEST=""
@@ -169,13 +167,9 @@ getCloneSource() {
   useBackupSource && echo "$POST_INSTALL_BACKUP_NAME" || echo "$BASE_VM_NAME"
 }
 
-isBackupSource() {
-  [[ "$1" == "$POST_INSTALL_BACKUP_NAME" ]]
-}
-
 runDesktopOnBackup() {
   local desktop_vm_name="test-desktop-$(date +%s)"
-  local desktop_snapshot="/home/titux/virt-manager/snapshot/${desktop_vm_name}.qcow2"
+  local desktop_snapshot="${VIRT_DIR}/snapshot/${desktop_vm_name}.qcow2"
 
   CREATED_VMS+=("$desktop_vm_name")
   CREATED_SNAPSHOTS+=("$desktop_snapshot")
@@ -197,7 +191,7 @@ echo "Starting desktop test after post-install backup..." > /var/log/test-output
 $(waitForNetwork)
 
 cd /home/debian/delice
-./desktop-environment.sh --as-root --no-prompts --theme 2>&1 | tee -a /var/log/test-output.log
+./desktop-environment.sh --as-root --no-prompts --theme --with-brave --with-rustdesk 2>&1 | tee -a /var/log/test-output.log
 echo "TEST_COMPLETE" >> /var/log/test-output.log
 poweroff
 DESKTOPSCRIPT
@@ -208,6 +202,8 @@ DESKTOPSCRIPT
   virt-customize -a "$desktop_snapshot" \
     --copy-in ./desktop-environment.sh:/home/debian/delice/ \
     --copy-in ./lib:/home/debian/delice/ \
+    --copy-in ./configs:/home/debian/delice/ \
+    --copy-in ./tools:/home/debian/delice/ \
     --copy-in ./.config:/home/debian/delice/ \
     --copy-in ./wallpapers:/home/debian/delice/ \
     --copy-in /tmp/run-desktop.sh:/usr/local/bin/ \
@@ -220,23 +216,14 @@ DESKTOPSCRIPT
 
   if ! monitorVMCompletion "$desktop_vm_name" "$TIMEOUT" "Desktop VM"; then
     error "Desktop VM timeout after ${TIMEOUT}s"
-    sudo virsh --connect qemu:///system destroy "$desktop_vm_name" 2>/dev/null || true
-    sudo virsh --connect qemu:///system undefine "$desktop_vm_name" --nvram 2>/dev/null || true
-    rm -f "$desktop_snapshot"
     exit 1
   fi
 
   virt-cat -a "$desktop_snapshot" /var/log/test-output.log > "$DESKTOP_LOG" 2>/dev/null
 
-  echo ""
-  log "Desktop test results (saved to $DESKTOP_LOG):"
-  echo ""
+  showLogSummary "$DESKTOP_LOG" "Desktop"
 
   grep -q "TEST_COMPLETE" "$DESKTOP_LOG" && log "Desktop test completed successfully!" || { error "Desktop test failed or did not complete"; exit 1; }
-
-  sudo virsh --connect qemu:///system destroy "$desktop_vm_name" 2>/dev/null || true
-  sudo virsh --connect qemu:///system undefine "$desktop_vm_name" --nvram 2>/dev/null || true
-  rm -f "$desktop_snapshot"
 }
 
 needsBackupCreation() {
@@ -278,7 +265,7 @@ parseArgs() {
 
 cleanup() {
   log "Cleaning up all created VMs and snapshots"
-  
+
   # Clean up all created VMs
   for vm_name in "${CREATED_VMS[@]}"; do
     [[ -n "$vm_name" ]] || continue
@@ -286,13 +273,16 @@ cleanup() {
     sudo virsh --connect qemu:///system destroy "$vm_name" 2>/dev/null || true
     sudo virsh --connect qemu:///system undefine "$vm_name" --nvram 2>/dev/null || true
   done
-  
+
   # Clean up all created snapshots
   for snapshot in "${CREATED_SNAPSHOTS[@]}"; do
     [[ -n "$snapshot" ]] && [[ -f "$snapshot" ]] || continue
     log "Removing snapshot: $snapshot"
     rm -f "$snapshot"
   done
+
+  # Clean up temporary scripts
+  rm -f /tmp/run-*.sh /tmp/rc.local
 }
 
 isFirstDesktopRun() {
@@ -329,6 +319,7 @@ main() {
   sudo chown $USER:$USER "$SNAPSHOT_IMAGE"
 
   log "Injecting scripts into disk image"
+  # Wait for libvirt to release the qcow2 disk lock after clone
   sleep 3
 
   if isFirstDesktopRun; then
@@ -370,7 +361,7 @@ echo "Starting desktop-only test..." > /var/log/test-output.log
 $(waitForNetwork)
 
 cd /home/debian/delice
-./desktop-environment.sh --as-root --no-prompts --theme 2>&1 | tee -a /var/log/test-output.log
+./desktop-environment.sh --as-root --no-prompts --theme --with-brave --with-rustdesk 2>&1 | tee -a /var/log/test-output.log
 echo "TEST_COMPLETE" >> /var/log/test-output.log
 poweroff
 DESKTOPSCRIPT
@@ -381,6 +372,9 @@ DESKTOPSCRIPT
     # Inject desktop files only
     virt-customize -a "$SNAPSHOT_IMAGE" \
       --copy-in ./desktop-environment.sh:/home/debian/delice/ \
+      --copy-in ./lib:/home/debian/delice/ \
+      --copy-in ./configs:/home/debian/delice/ \
+      --copy-in ./tools:/home/debian/delice/ \
       --copy-in ./.config:/home/debian/delice/ \
       --copy-in ./wallpapers:/home/debian/delice/ \
       --copy-in /tmp/run-desktop-only.sh:/usr/local/bin/ \
